@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-multipart
+sqlalchemy
+aiofiles
+boto3
+qrcode[pil]
+python-dotenv
+requests
+pydantic
