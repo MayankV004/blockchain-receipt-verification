@@ -11,7 +11,7 @@ BLOCKCHAIN_URL = "http://blockchain:8001"
 @router.post("/upload")
 async def upload_receipt(file: UploadFile = File(...), uploader: str = "anonymous"):
     file_bytes = await file.read()
-    file_hash = generate_hash(file_bytes)
+    file_hash = generate_hash(file_bytes, file.filename)
     receipt_id = str(uuid.uuid4())
     
     # Store file locally (mocking Cloudflare R2)

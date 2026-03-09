@@ -8,3 +8,4 @@ qrcode[pil]
 python-dotenv
 requests
 pydantic
+PyPDF2

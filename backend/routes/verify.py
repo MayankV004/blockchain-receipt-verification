@@ -10,7 +10,7 @@ BLOCKCHAIN_URL = "http://blockchain:8001"
 @router.post("/verify")
 async def verify_receipt(file: UploadFile = File(...)):
     file_bytes = await file.read()
-    file_hash = generate_hash(file_bytes)
+    file_hash = generate_hash(file_bytes, file.filename)
     
     try:
         response = requests.get(f"{BLOCKCHAIN_URL}/chain/find?hash={file_hash}")
