@@ -46,7 +46,7 @@ export default function VerifyPage() {
     try {
       const { data } = await api.post<VerifyResponse>("/verify", formData);
       setResult(data);
-      if (data.status.includes("VALID")) {
+      if (data.status.startsWith("VALID")) {
         toast.success("Cryptographic match found!");
       } else {
         toast.error("Integrity check failed.");
@@ -64,9 +64,9 @@ export default function VerifyPage() {
     setResult(null);
   };
 
-  const isValid = result?.status?.includes("VALID");
+  const isValid = result?.status?.startsWith("VALID");
   const isError =
-    result?.status?.includes("ERROR") || result?.status?.includes("INVALID");
+    result?.status?.startsWith("ERROR") || result?.status?.includes("INVALID");
 
   return (
     <div className="w-full max-w-2xl px-4 py-12 mx-auto">

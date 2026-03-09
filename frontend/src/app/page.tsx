@@ -33,6 +33,7 @@ export default function Home() {
       onDrop,
       accept: {
         "application/pdf": [".pdf"],
+        "text/plain": [".txt"],
         "image/jpeg": [".jpeg", ".jpg"],
         "image/png": [".png"],
       },
@@ -154,7 +155,7 @@ export default function Home() {
                       or drag and drop
                     </p>
                     <p className="text-sm text-slate-500">
-                      Supports PDF, PNG, JPG up to 10MB
+                      Supports PDF, TXT, PNG, JPG up to 10MB
                     </p>
                   </div>
                 )}
