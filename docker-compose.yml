@@ -9,6 +9,7 @@ services:
       POSTGRES_DB: receipts
     volumes:
       - pg_data:/var/lib/postgresql/data
+      - ./postgres:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
     networks: [app-net]
@@ -52,6 +53,7 @@ services:
       REDIS_URL: redis://redis:6379
       BLOCKCHAIN_URL: http://blockchain:8001
       FRONTEND_URL: http://frontend:3000
+      CORS_ORIGIN: http://localhost:3000
     ports:
       - "8000:8000"
     networks: [app-net]

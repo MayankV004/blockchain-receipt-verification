@@ -8,13 +8,8 @@ export function useWebSocket(url: string, maxMessages = 50) {
 
   useEffect(() => {
     const connect = async () => {
-      const sessionRes = await getSession();
-      const data = sessionRes?.data as any; // Ignore strict typing error on getSession nested data
-      const token = data?.session?.token;
-      if (!token) return;
-
-      // Pass token as query param (WebSocket can't set headers)
-      ws.current = new WebSocket(`${url}?token=${token}`);
+      // Cookies are automatically sent to the same domain (localhost) during WebSocket handshake
+      ws.current = new WebSocket(url);
       ws.current.onopen = () => setConnected(true);
       ws.current.onclose = () => {
         setConnected(false);

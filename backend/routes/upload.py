@@ -1,12 +1,12 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
-import uuid, requests
+import os, uuid, requests
 from storage import upload_file
 from utils import generate_hash
 
 router = APIRouter()
 
-# The blockchain container will run on the network 'app-net' and be reachable at 'http://blockchain:8001'
-BLOCKCHAIN_URL = "http://blockchain:8001"
+# Bug #4 fix: read BLOCKCHAIN_URL from environment (docker-compose injects this)
+BLOCKCHAIN_URL = os.getenv("BLOCKCHAIN_URL", "http://blockchain:8001")
 
 @router.post("/upload")
 async def upload_receipt(file: UploadFile = File(...), uploader: str = "anonymous"):

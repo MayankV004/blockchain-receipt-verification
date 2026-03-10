@@ -1,7 +1,8 @@
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
 sqlalchemy
+psycopg2-binary
 aiofiles
 boto3
 qrcode[pil]
@@ -9,3 +10,6 @@ python-dotenv
 requests
 pydantic
 PyPDF2
+redis
+httpx
+websockets

@@ -1,3 +1,4 @@
+import os
 from sqlalchemy import Column, String, Float, create_engine
 from sqlalchemy.orm import declarative_base
 
@@ -11,5 +12,9 @@ class Receipt(Base):
     timestamp = Column(Float)
     r2_key = Column(String)
 
-engine = create_engine("sqlite:///receipts.db")
+# Bug #3 fix: use DATABASE_URL from environment instead of hardcoded SQLite
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///receipts.db")
+# SQLAlchemy doesn't accept asyncpg URLs for sync engine; convert if needed
+SYNC_DB_URL = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+engine = create_engine(SYNC_DB_URL)
 Base.metadata.create_all(engine)
