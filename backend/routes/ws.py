@@ -1,47 +1,65 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import redis.asyncio as aioredis
-import httpx, json, os
+import httpx
+import json
+import os
 
 router = APIRouter()
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://frontend:3000")
 
+
+class ConnectionManager:
+    def __init__(self):
+        self.active: list[WebSocket] = []
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self.active.append(ws)
+
+    def disconnect(self, ws: WebSocket):
+        if ws in self.active:
+            self.active.remove(ws)
+
+    async def broadcast(self, message: str):
+        disconnected = []
+        for ws in self.active:
+            try:
+                await ws.send_text(message)
+            except Exception:
+                disconnected.append(ws)
+        for ws in disconnected:
+            self.disconnect(ws)
+
+
+manager = ConnectionManager()
+
+
+async def verify_admin(websocket: WebSocket) -> bool:
+    session_cookie = websocket.cookies.get("better-auth.session_token")
+    if not session_cookie:
+        return False
+    headers = {"Cookie": f"better-auth.session_token={session_cookie}"}
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{FRONTEND_URL}/api/auth/get-session", headers=headers
+        )
+    if resp.status_code != 200:
+        return False
+    data = resp.json()
+    user = data.get("user", {}) if isinstance(data, dict) else {}
+    return user.get("role") == "admin"
+
+
 @router.websocket("/ws/transactions")
 async def ws_transactions(websocket: WebSocket):
-    # Try reading Better Auth cookies (name can differ by browser, e.g. cross-site)
-    session_cookie = websocket.cookies.get("better-auth.session_token")
-    
-    print(f"WS Connect attempt, cookies found: {websocket.cookies.keys()}")
-    
-    headers = {}
-    if session_cookie:
-        headers["Cookie"] = f"better-auth.session_token={session_cookie}"
-        
-    async with httpx.AsyncClient() as client:
-        # Use headers to forward the cookie to the Next.js auth endpoint
-        resp = await client.get(f"{FRONTEND_URL}/api/auth/get-session", headers=headers)
-    
-    print(f"Auth check status: {resp.status_code}")
-    if resp.status_code != 200:
-        print("WS Reject: Auth API returned non-200")
-        await websocket.close(code=4001)
-        return
-    
-    data = resp.json()
-    if not data or not isinstance(data, dict):
-        print("WS Reject: Auth API returned invalid JSON")
-        await websocket.close(code=4001)
-        return
-        
-    user = data.get("user", {})
-    print(f"WS User: {user.get('email', 'Unknown')} (role: {user.get('role', 'none')})")
-    if not user or user.get("role") != "admin":
-        print("WS Reject: User is not admin")
+    is_admin = await verify_admin(websocket)
+    if not is_admin:
         await websocket.close(code=4001)
         return
 
-    print("WS Accept: User is admin, connection accepted.")
-    await websocket.accept()
+    await manager.connect(websocket)
+
     r = aioredis.from_url(REDIS_URL)
     pubsub = r.pubsub()
     await pubsub.subscribe("transactions")
@@ -52,5 +70,6 @@ async def ws_transactions(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        manager.disconnect(websocket)
         await pubsub.unsubscribe("transactions")
         await r.close()

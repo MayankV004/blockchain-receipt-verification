@@ -7,7 +7,6 @@ aiofiles
 boto3
 qrcode[pil]
 python-dotenv
-requests
 pydantic
 PyPDF2
 redis

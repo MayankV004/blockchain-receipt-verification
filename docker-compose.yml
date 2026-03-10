@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -21,12 +19,18 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     networks: [app-net]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
+      timeout: 3s
+      retries: 5
 
   blockchain:
     build:
@@ -85,10 +89,12 @@ services:
     ports:
       - "80:80"
     networks: [app-net]
+    restart: unless-stopped
     depends_on: [backend, frontend]
 
 volumes:
   pg_data:
+  redis_data:
 
 networks:
   app-net:
