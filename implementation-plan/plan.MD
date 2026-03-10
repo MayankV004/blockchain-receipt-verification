@@ -1,588 +1,1081 @@
 # 🔗 Digital Bill / Receipt Verification System
-## Full Project Plan — Due: Thursday
+## Production-Level Plan — Full Stack Rebuild
 
-> **Team Size:** 5 Members | **Stack:** Python (FastAPI) + Custom Blockchain + Cloudflare R2 + Docker + Next.js (optional)
-
----
-
-## 📅 Day-by-Day Schedule
-
-### ✅ Day 1 — Sunday (Today): Setup & Core Blockchain
-**Goal:** Everyone has the repo running locally. Core blockchain logic is working.
-
-### ✅ Day 2 — Monday: Backend API + Storage
-**Goal:** FastAPI endpoints are live. Files upload to Cloudflare R2. Hashes are stored on-chain.
-
-### ✅ Day 3 — Tuesday: Frontend + QR Code + Verification Flow
-**Goal:** Full upload → verify cycle works end-to-end through the UI.
-
-### ✅ Day 4 — Wednesday: Docker, Integration & Testing
-**Goal:** Everything runs with a single `docker compose up`. All flows tested and stable.
-
-### ✅ Day 5 — Thursday: Demo Day
-**Goal:** Clean demo, no surprises. Each member knows what to say.
+> **Team Size:** 5 Members | **Stack:** Python (FastAPI) + Custom Blockchain + PostgreSQL + Cloudflare R2 + Next.js 16 + Better Auth + Docker + WebSockets + Redis
 
 ---
 
-## 👥 Team Member Role Assignments
+## 🧱 Architecture Overview
 
-| Member | Role | Core Responsibility |
-|--------|------|---------------------|
-| **Member 1** | Blockchain Engineer | Custom Python blockchain, block/transaction structure, immutability logic |
-| **Member 2** | Backend Developer | FastAPI app, upload endpoint, hash generation, DB models |
-| **Member 3** | Storage & Verification | Cloudflare R2 integration, verification endpoint, QR code generation |
-| **Member 4** | Frontend Developer | Next.js UI (or HTML fallback), upload form, verification page |
-| **Member 5** | DevOps & Integration | Docker, docker-compose, networking, final integration & demo prep |
+```
+                        ┌──────────────────────────────────────┐
+                        │          Next.js 16 Frontend          │
+                        │  Upload │ Verify │ Dashboard │ Login  │
+                        └──────────────┬───────────────────────┘
+                                       │ HTTP + WebSocket
+                                       │ Better Auth session (cookie)
+                        ┌──────────────▼───────────────────────┐
+                        │           FastAPI Backend              │
+                        │  /upload │ /verify │ /chain │ /admin  │
+                        │     JWT middleware on protected routes │
+                        └──┬──────────┬───────────┬────────────┘
+                           │          │           │
+              ┌────────────▼──┐  ┌────▼────┐  ┌──▼──────────┐
+              │  Blockchain    │  │PostgreSQL│  │Cloudflare R2│
+              │  Node (FastAPI)│  │  + Auth  │  │  (Storage)  │
+              └───────────────┘  │  Tables  │  └─────────────┘
+                           │     └─────────┘
+                        ┌──▼──────┐
+                        │  Redis   │
+                        │ (PubSub) │
+                        └──────────┘
+```
 
 ---
 
-## 🏗️ Project Folder Structure
+## 🔐 Authentication Strategy (Better Auth)
+
+### Route Protection Matrix
+
+| Route / Endpoint | Public | Admin Only |
+|------------------|--------|------------|
+| `POST /api/upload` | ✅ | — |
+| `POST /api/verify` | ✅ | — |
+| `GET /api/verify/:id` | ✅ | — |
+| `GET /api/qr/:id` | ✅ | — |
+| `GET /api/thumbnail/:id` | ✅ | — |
+| `GET /api/chain` | — | ✅ |
+| `GET /api/chain/stats` | — | ✅ |
+| `DELETE /api/chain/reset` | — | ✅ |
+| `/dashboard` page | — | ✅ |
+| `/admin` page | — | ✅ |
+| `/login` page | ✅ | — |
+
+### Why Better Auth over NextAuth
+- **Native Postgres support** — sessions stored directly in your existing DB, no adapter needed
+- **Built-in role system** — `admin` plugin out of the box, no manual RBAC wiring
+- **End-to-end TypeScript** — fully typed client hooks for Next.js App Router
+- **Faster setup** — single `auth.ts` config file handles everything
+- **App Router native** — no legacy Pages Router hacks required
+
+---
+
+## 📁 Production Folder Structure
 
 ```
 receipt-verification/
 ├── blockchain/
-│   ├── block.py              # Block class
-│   ├── blockchain.py         # Blockchain class
-│   └── node.py               # Blockchain node (Flask/FastAPI mini-server)
-├── backend/
-│   ├── main.py               # FastAPI app
-│   ├── routes/
-│   │   ├── upload.py         # POST /upload
-│   │   └── verify.py         # POST /verify
-│   ├── models.py             # DB models (SQLite)
-│   ├── storage.py            # Cloudflare R2 client
+│   ├── block.py                  # Block class with Merkle root
+│   ├── blockchain.py             # Thread-safe blockchain engine
+│   ├── node.py                   # FastAPI node — exposes chain API
 │   └── requirements.txt
-├── frontend/                 # Next.js or plain HTML
-│   ├── pages/
-│   │   ├── index.js          # Upload page
-│   │   └── verify.js         # Verify page
+├── backend/
+│   ├── main.py                   # FastAPI app with CORS, lifespan
+│   ├── routes/
+│   │   ├── upload.py             # POST /upload (multi-format, public)
+│   │   ├── verify.py             # POST /verify + GET /verify/{id} (public)
+│   │   ├── chain.py              # GET /chain, /stats, DELETE /reset (admin only)
+│   │   └── ws.py                 # WebSocket /ws/transactions (admin only)
+│   ├── auth/
+│   │   └── middleware.py         # JWT verification from Better Auth sessions
+│   ├── models.py                 # SQLAlchemy + PostgreSQL models
+│   ├── database.py               # Async DB session
+│   ├── storage.py                # Cloudflare R2 (boto3, async)
+│   ├── utils/
+│   │   ├── hash.py               # SHA-256 + file fingerprinting
+│   │   ├── image_proc.py         # PDF/image normalization
+│   │   └── qr.py                 # QR generation utility
+│   └── requirements.txt
+├── frontend/
+│   ├── app/                      # Next.js 16 App Router
+│   │   ├── layout.tsx
+│   │   ├── page.tsx              # Upload page (public)
+│   │   ├── verify/page.tsx       # Verify page (public)
+│   │   ├── verify/[id]/page.tsx  # QR scan landing page (public)
+│   │   ├── login/page.tsx        # Google / GitHub OAuth login
+│   │   ├── dashboard/page.tsx    # Live blockchain dashboard (admin)
+│   │   ├── admin/page.tsx        # Chain management (admin)
+│   │   └── api/auth/[...all]/route.ts  # Better Auth handler
+│   ├── components/
+│   │   ├── UploadZone.tsx        # Drag & drop multi-format
+│   │   ├── VerifyResult.tsx      # Valid/Invalid result card
+│   │   ├── BlockchainViewer.tsx  # Live chain visualizer
+│   │   ├── TxFeed.tsx            # Real-time transaction feed
+│   │   ├── StatsBar.tsx          # Blocks, Tx, Hash rate stats
+│   │   ├── QRModal.tsx           # QR code modal
+│   │   └── AuthGuard.tsx         # Session-aware navbar
+│   ├── lib/
+│   │   ├── auth.ts               # Better Auth server config
+│   │   ├── auth-client.ts        # Better Auth client hooks
+│   │   ├── api.ts                # Axios instance with auth interceptor
+│   │   └── useWebSocket.ts       # WS hook for real-time
+│   ├── middleware.ts             # Next.js route protection
 │   └── package.json
+├── nginx/
+│   └── nginx.conf
 ├── docker-compose.yml
 ├── Dockerfile.backend
 ├── Dockerfile.blockchain
+├── Dockerfile.frontend
 └── README.md
 ```
 
 ---
 
-## 📋 Step-by-Step Implementation Guide
+## 👥 Team Member Role Assignments
+
+| Member | Role | Owns |
+|--------|------|------|
+| **Member 1** | Blockchain Engineer | Merkle tree blocks, thread-safe chain, `/chain` endpoints, tamper proof logic |
+| **Member 2** | Backend Developer | FastAPI app, PostgreSQL models, async upload pipeline, `require_admin` middleware |
+| **Member 3** | Storage & Verification | R2 client, multi-format receipt processing, verify endpoint, QR code |
+| **Member 4** | Frontend Developer | Next.js 16, Better Auth setup, Dashboard, live TX feed, upload/verify UI |
+| **Member 5** | DevOps & Integration | Docker, Redis, nginx, load testing, final integration & demo prep |
 
 ---
 
-### 🔷 MEMBER 1 — Blockchain Core (`/blockchain/`)
+## 📅 Day-by-Day Schedule
 
-#### Step 1: Create `block.py`
+### ✅ Day 1 — Sunday: Setup + Production Blockchain Core
+**Goal:** Repo running locally. Production-grade blockchain logic complete.
+
+- [ ] Repo init, branching strategy agreed (`main`, `dev`, feature branches)
+- [ ] Member 1: `block.py`, `blockchain.py`, `node.py` with thread lock + Merkle root
+- [ ] Member 2: FastAPI skeleton + PostgreSQL connection + `models.py`
+- [ ] Member 3: Cloudflare R2 bucket created, `storage.py` working
+- [ ] Member 4: Next.js 16 scaffolded with Tailwind + shadcn/ui + Better Auth installed
+- [ ] Member 5: `docker-compose.yml` skeleton, Redis + Postgres containers spinning
+
+### ✅ Day 2 — Monday: Full Backend API + Storage + DB
+**Goal:** Upload pipeline end-to-end. Files in R2. Hashes in DB + chain.
+
+- [ ] `POST /upload` working with PDF, PNG, JPG, JPEG support
+- [ ] Hash stored in PostgreSQL + blockchain simultaneously
+- [ ] R2 upload confirmed via Cloudflare dashboard
+- [ ] Redis pub/sub broadcasting new transactions
+- [ ] `GET /chain` returning full chain with stats
+
+### ✅ Day 3 — Tuesday: Auth + Frontend + Dashboard + WebSocket
+**Goal:** Better Auth live. Full UI working. Dashboard protected behind admin login.
+
+- [ ] Better Auth configured — Google + GitHub OAuth working
+- [ ] `/login` page functional with both providers
+- [ ] Next.js `middleware.ts` protecting `/dashboard` and `/admin`
+- [ ] FastAPI `require_admin` middleware protecting `/api/chain/*`
+- [ ] WebSocket `/ws/transactions` with token verification
+- [ ] Upload page: drag-drop, thumbnail preview, QR code (public)
+- [ ] Verify page: VALID ✅ / INVALID ❌ card (public)
+- [ ] Dashboard: live TX feed + stats + blockchain visualizer (admin)
+- [ ] First team member promoted to admin via `make-admin.ts`
+
+### ✅ Day 4 — Wednesday: Docker, Performance & Integration
+**Goal:** `docker compose up` starts everything. Load tested. Demo rehearsed.
+
+- [ ] All services in Docker with health checks
+- [ ] nginx reverse proxy configured
+- [ ] Load test: 100+ simultaneous uploads handled
+- [ ] Full flow tested 5+ times (upload → verify → tamper → invalidate)
+- [ ] Auth flow tested: login → dashboard access → logout → redirect to `/login`
+- [ ] Demo script rehearsed with all 5 members
+
+### ✅ Day 5 — Thursday: Demo Day 🚀
+**Goal:** Flawless, impressive demonstration.
+
+---
+
+## 🔷 MEMBER 1 — Production Blockchain Core (`/blockchain/`)
+
+### `block.py` — Block with Merkle Root
 ```python
 import hashlib, json, time
+from typing import List, Dict
+
+class MerkleTree:
+    @staticmethod
+    def compute_root(transactions: List[Dict]) -> str:
+        if not transactions:
+            return hashlib.sha256(b"empty").hexdigest()
+        leaves = [hashlib.sha256(json.dumps(tx, sort_keys=True).encode()).hexdigest()
+                  for tx in transactions]
+        while len(leaves) > 1:
+            if len(leaves) % 2 != 0:
+                leaves.append(leaves[-1])
+            leaves = [hashlib.sha256((leaves[i] + leaves[i+1]).encode()).hexdigest()
+                      for i in range(0, len(leaves), 2)]
+        return leaves[0]
 
 class Block:
-    def __init__(self, index, transactions, previous_hash):
+    def __init__(self, index: int, transactions: List[Dict], previous_hash: str):
         self.index = index
         self.timestamp = time.time()
         self.transactions = transactions
         self.previous_hash = previous_hash
+        self.merkle_root = MerkleTree.compute_root(transactions)
+        self.nonce = 0
         self.hash = self.compute_hash()
 
-    def compute_hash(self):
-        block_data = json.dumps(self.__dict__, sort_keys=True)
+    def compute_hash(self) -> str:
+        block_data = json.dumps({
+            "index": self.index,
+            "timestamp": self.timestamp,
+            "merkle_root": self.merkle_root,
+            "previous_hash": self.previous_hash,
+            "nonce": self.nonce,
+        }, sort_keys=True)
         return hashlib.sha256(block_data.encode()).hexdigest()
+
+    def to_dict(self) -> Dict:
+        return {
+            "index": self.index,
+            "timestamp": self.timestamp,
+            "transactions": self.transactions,
+            "merkle_root": self.merkle_root,
+            "previous_hash": self.previous_hash,
+            "hash": self.hash,
+            "tx_count": len(self.transactions),
+        }
 ```
 
-#### Step 2: Create `blockchain.py`
+### `blockchain.py` — Thread-Safe, High-Throughput Engine
 ```python
+import threading
 from block import Block
+from typing import List, Dict, Optional
+import time
 
 class Blockchain:
+    BATCH_SIZE = 10
+    BATCH_TIMEOUT = 5.0
+
     def __init__(self):
-        self.chain = []
+        self._lock = threading.RLock()
+        self.chain: List[Block] = []
+        self._pending: List[Dict] = []
+        self._stats = {"total_tx": 0, "blocks_mined": 0, "start_time": time.time()}
         self._create_genesis_block()
+        self._timer = threading.Timer(self.BATCH_TIMEOUT, self._auto_seal)
+        self._timer.daemon = True
+        self._timer.start()
 
     def _create_genesis_block(self):
-        genesis = Block(0, [], "0")
-        self.chain.append(genesis)
+        self.chain.append(Block(0, [], "0"))
 
-    def add_transaction(self, receipt_id, file_hash, uploader):
-        transaction = {
-            "receipt_id": receipt_id,
-            "file_hash": file_hash,
-            "uploader": uploader,
-            "timestamp": __import__('time').time()
-        }
-        last_block = self.chain[-1]
-        new_block = Block(len(self.chain), [transaction], last_block.hash)
-        self.chain.append(new_block)
-        return new_block
+    def add_transaction(self, receipt_id: str, file_hash: str, uploader: str,
+                        filename: str, file_size: int) -> Dict:
+        tx = {"receipt_id": receipt_id, "file_hash": file_hash, "uploader": uploader,
+              "filename": filename, "file_size": file_size, "timestamp": time.time()}
+        with self._lock:
+            self._pending.append(tx)
+            self._stats["total_tx"] += 1
+            if len(self._pending) >= self.BATCH_SIZE:
+                self._seal_block()
+        return tx
 
-    def find_hash(self, file_hash):
-        for block in self.chain:
-            for tx in block.transactions:
+    def _seal_block(self):
+        if not self._pending:
+            return
+        block = Block(len(self.chain), self._pending[:], self.chain[-1].hash)
+        self.chain.append(block)
+        self._pending.clear()
+        self._stats["blocks_mined"] += 1
+
+    def _auto_seal(self):
+        with self._lock:
+            if self._pending:
+                self._seal_block()
+        self._timer = threading.Timer(self.BATCH_TIMEOUT, self._auto_seal)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def find_hash(self, file_hash: str) -> Optional[Dict]:
+        with self._lock:
+            for block in reversed(self.chain):
+                for tx in block.transactions:
+                    if tx["file_hash"] == file_hash:
+                        return {**tx, "block_index": block.index, "block_hash": block.hash}
+            for tx in self._pending:
                 if tx["file_hash"] == file_hash:
-                    return tx
+                    return {**tx, "block_index": "pending", "block_hash": None}
         return None
 
-    def is_valid(self):
-        for i in range(1, len(self.chain)):
-            curr = self.chain[i]
-            prev = self.chain[i - 1]
-            if curr.previous_hash != prev.hash:
-                return False
+    def is_valid(self) -> bool:
+        with self._lock:
+            for i in range(1, len(self.chain)):
+                curr, prev = self.chain[i], self.chain[i - 1]
+                if curr.previous_hash != prev.hash or curr.hash != curr.compute_hash():
+                    return False
         return True
+
+    def get_stats(self) -> Dict:
+        with self._lock:
+            uptime = time.time() - self._stats["start_time"]
+            return {
+                "total_blocks": len(self.chain),
+                "total_transactions": self._stats["total_tx"],
+                "pending_transactions": len(self._pending),
+                "chain_valid": self.is_valid(),
+                "uptime_seconds": round(uptime, 1),
+                "tx_per_second": round(self._stats["total_tx"] / max(uptime, 1), 2),
+            }
+
+    def get_recent_blocks(self, limit: int = 10) -> List[Dict]:
+        with self._lock:
+            return [b.to_dict() for b in reversed(self.chain[-limit:])]
 ```
 
-#### Step 3: Expose blockchain as an internal API (`node.py`)
-- Use FastAPI or a simple in-memory singleton
-- Expose `POST /chain/add` and `GET /chain/find?hash=...`
+### `node.py` — FastAPI Blockchain Node
+```python
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from blockchain import Blockchain
+from pydantic import BaseModel
+import redis.asyncio as aioredis, json, os
+
+app = FastAPI(title="Blockchain Node", version="2.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+chain = Blockchain()
+redis_client = None
+
+@app.on_event("startup")
+async def startup():
+    global redis_client
+    redis_client = aioredis.from_url(os.getenv("REDIS_URL", "redis://redis:6379"))
+
+class TxPayload(BaseModel):
+    receipt_id: str
+    file_hash: str
+    uploader: str
+    filename: str
+    file_size: int
+
+@app.post("/chain/add")
+async def add_transaction(payload: TxPayload):
+    tx = chain.add_transaction(**payload.dict())
+    if redis_client:
+        await redis_client.publish("transactions", json.dumps(tx))
+    return {"status": "accepted", "transaction": tx}
+
+@app.get("/chain/find")
+def find_hash(hash: str):
+    return chain.find_hash(hash) or {"found": False}
+
+@app.get("/chain")
+def get_chain(limit: int = 20):
+    return {"blocks": chain.get_recent_blocks(limit), "stats": chain.get_stats()}
+
+@app.get("/chain/stats")
+def get_stats():
+    return chain.get_stats()
+
+@app.get("/chain/valid")
+def validate():
+    return {"valid": chain.is_valid()}
+```
 
 ---
 
-### 🔷 MEMBER 2 — Backend API (`/backend/`)
+## 🔷 MEMBER 2 — Backend API + PostgreSQL (`/backend/`)
 
-#### Step 1: Install dependencies
+### `requirements.txt`
 ```
-fastapi
-uvicorn
+fastapi>=0.111.0
+uvicorn[standard]
 python-multipart
-sqlalchemy
+sqlalchemy[asyncio]
+asyncpg
 aiofiles
 boto3
 qrcode[pil]
+Pillow
+PyMuPDF
+python-dotenv
+redis[asyncio]
+httpx
+python-jose[cryptography]
+pydantic-settings
 ```
 
-#### Step 2: Create `main.py`
+### `database.py`
 ```python
-from fastapi import FastAPI
-from routes import upload, verify
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.orm import DeclarativeBase
+import os
 
-app = FastAPI(title="Receipt Verification API")
-app.include_router(upload.router)
-app.include_router(verify.router)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:pass@postgres:5432/receipts")
+engine = create_async_engine(DATABASE_URL, pool_size=20, max_overflow=40)
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
-@app.get("/")
-def root():
-    return {"status": "Receipt Verification System Running"}
+class Base(DeclarativeBase):
+    pass
+
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session
 ```
 
-#### Step 3: Create `models.py` (SQLite via SQLAlchemy)
+### `models.py`
 ```python
-from sqlalchemy import Column, String, Float, create_engine
-from sqlalchemy.orm import declarative_base
-
-Base = declarative_base()
+from sqlalchemy import Column, String, Float, Integer, Boolean, Text, BigInteger, Index
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from database import Base
+import uuid
 
 class Receipt(Base):
     __tablename__ = "receipts"
-    receipt_id = Column(String, primary_key=True)
-    file_hash = Column(String, unique=True)
-    uploader = Column(String)
-    timestamp = Column(Float)
-    r2_key = Column(String)
-
-engine = create_engine("sqlite:///receipts.db")
-Base.metadata.create_all(engine)
+    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    receipt_id = Column(String(64), unique=True, nullable=False, index=True)
+    file_hash = Column(String(64), unique=True, nullable=False, index=True)
+    uploader = Column(String(128), nullable=False)
+    filename = Column(String(255))
+    file_size = Column(BigInteger)
+    file_type = Column(String(32))
+    r2_key = Column(String(512))
+    thumbnail_key = Column(String(512))
+    block_index = Column(Integer, nullable=True)
+    block_hash = Column(String(64), nullable=True)
+    timestamp = Column(Float, nullable=False)
+    is_verified = Column(Boolean, default=False)
+    verify_count = Column(Integer, default=0)
+    notes = Column(Text, nullable=True)
+    __table_args__ = (
+        Index("idx_receipt_hash", "file_hash"),
+        Index("idx_receipt_uploader", "uploader"),
+        Index("idx_receipt_timestamp", "timestamp"),
+    )
 ```
 
-#### Step 4: Hash generation utility
+### `auth/middleware.py` — FastAPI Admin Guard
 ```python
-import hashlib
+from fastapi import HTTPException, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import httpx, os
 
-def generate_hash(file_bytes: bytes) -> str:
-    return hashlib.sha256(file_bytes).hexdigest()
+security = HTTPBearer()
+
+async def require_admin(credentials: HTTPAuthorizationCredentials = Security(security)):
+    """
+    Better Auth stores sessions in Postgres and issues a session token.
+    The frontend passes this token as a Bearer header for FastAPI calls.
+    FastAPI verifies it by calling Better Auth's /api/auth/get-session endpoint.
+    """
+    token = credentials.credentials
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{os.getenv('FRONTEND_URL', 'http://frontend:3000')}/api/auth/get-session",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+    if resp.status_code != 200:
+        raise HTTPException(401, "Unauthorized — invalid session")
+    user = resp.json().get("user", {})
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin access required")
+    return user
+```
+
+### `routes/chain.py` — Admin-Only Chain Routes
+```python
+from fastapi import APIRouter, Depends
+from auth.middleware import require_admin
+import httpx, os
+
+router = APIRouter()
+BLOCKCHAIN_URL = os.getenv("BLOCKCHAIN_URL", "http://blockchain:8001")
+
+@router.get("/chain", dependencies=[Depends(require_admin)])
+async def get_chain(limit: int = 20):
+    async with httpx.AsyncClient() as c:
+        r = await c.get(f"{BLOCKCHAIN_URL}/chain", params={"limit": limit})
+    return r.json()
+
+@router.get("/chain/stats", dependencies=[Depends(require_admin)])
+async def get_stats():
+    async with httpx.AsyncClient() as c:
+        r = await c.get(f"{BLOCKCHAIN_URL}/chain/stats")
+    return r.json()
+
+@router.get("/chain/valid", dependencies=[Depends(require_admin)])
+async def validate_chain():
+    async with httpx.AsyncClient() as c:
+        r = await c.get(f"{BLOCKCHAIN_URL}/chain/valid")
+    return r.json()
+```
+
+### `main.py`
+```python
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from routes import upload, verify, chain, ws
+from database import engine, Base
+import os
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+
+app = FastAPI(title="Receipt Verification API", version="2.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware,
+    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
+    allow_credentials=True,   # Required for Better Auth cookies
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(upload.router, prefix="/api", tags=["Upload"])
+app.include_router(verify.router, prefix="/api", tags=["Verify"])
+app.include_router(chain.router, prefix="/api", tags=["Chain"])
+app.include_router(ws.router, tags=["WebSocket"])
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 ```
 
 ---
 
-### 🔷 MEMBER 3 — Storage & Verification (`/backend/routes/`)
+## 🔷 MEMBER 3 — Storage, Multi-Format Processing & Verification
 
-#### Step 1: R2 Setup on Cloudflare
-1. Go to [dash.cloudflare.com](https://dash.cloudflare.com) → **R2** → Create a bucket named `receipts`
-2. Go to R2 → **Manage R2 API Tokens** → Create token with **Read & Write** permissions
-3. Note down your **Account ID**, **Access Key ID**, and **Secret Access Key**
-4. Create a `.env` file in `/backend/`:
-```
-R2_ACCOUNT_ID=your_account_id_here
-R2_ACCESS_KEY=your_access_key_here
-R2_SECRET_KEY=your_secret_key_here
-R2_BUCKET=receipts
-```
-> ⚠️ Add `.env` to `.gitignore` — never commit credentials to GitHub
-
-#### Step 2: Cloudflare R2 client (`storage.py`)
+### `utils/image_proc.py`
 ```python
-import boto3, os
+import fitz
+from PIL import Image
+import io
+from pathlib import Path
+
+def detect_type(file_bytes: bytes, filename: str) -> str:
+    if file_bytes[:4] == b"%PDF": return "pdf"
+    if file_bytes[:8] == b"\x89PNG\r\n\x1a\n": return "png"
+    if file_bytes[:3] == b"\xff\xd8\xff": return "jpeg"
+    return Path(filename).suffix.lstrip(".").lower()
+
+def generate_thumbnail(file_bytes: bytes, file_type: str, size=(256, 256)) -> bytes:
+    try:
+        if file_type == "pdf":
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            pix = doc.load_page(0).get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+        else:
+            img = Image.open(io.BytesIO(file_bytes))
+        img.thumbnail(size, Image.LANCZOS)
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, format="JPEG", quality=80)
+        return buf.getvalue()
+    except Exception:
+        return b""
+
+def normalize_for_hashing(file_bytes: bytes, file_type: str) -> bytes:
+    """Canonicalize images to PNG before hashing — prevents format-conversion duplicates."""
+    if file_type == "pdf":
+        return file_bytes
+    try:
+        img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:
+        return file_bytes
+```
+
+### `storage.py` — Cloudflare R2 Async
+```python
+import boto3, os, asyncio
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from dotenv import load_dotenv
 
 load_dotenv()
-
-s3 = boto3.client(
-    "s3",
+_executor = ThreadPoolExecutor(max_workers=8)
+s3 = boto3.client("s3",
     endpoint_url=f"https://{os.getenv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com",
     aws_access_key_id=os.getenv("R2_ACCESS_KEY"),
     aws_secret_access_key=os.getenv("R2_SECRET_KEY"),
-    region_name="auto"
+    region_name="auto",
 )
 BUCKET = os.getenv("R2_BUCKET", "receipts")
 
-def upload_file(file_bytes: bytes, filename: str) -> str:
-    s3.put_object(Bucket=BUCKET, Key=filename, Body=file_bytes)
-    return filename
+async def upload_file_async(file_bytes: bytes, key: str, content_type: str = "application/octet-stream") -> str:
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(_executor,
+        partial(s3.put_object, Bucket=BUCKET, Key=key, Body=file_bytes, ContentType=content_type))
+    return key
 
-def get_file(filename: str) -> bytes:
-    response = s3.get_object(Bucket=BUCKET, Key=filename)
-    return response["Body"].read()
-```
-
-Add `python-dotenv` to `requirements.txt` as well.
-
-#### Step 2: Upload route (`routes/upload.py`)
-```python
-from fastapi import APIRouter, UploadFile, File
-import uuid, requests
-from storage import upload_file
-from utils import generate_hash
-
-router = APIRouter()
-
-@router.post("/upload")
-async def upload_receipt(file: UploadFile = File(...), uploader: str = "anonymous"):
-    file_bytes = await file.read()
-    file_hash = generate_hash(file_bytes)
-    receipt_id = str(uuid.uuid4())
-    
-    # Store file in Cloudflare R2
-    upload_file(file_bytes, receipt_id + "_" + file.filename)
-    
-    # Store hash on blockchain
-    requests.post("http://blockchain:8001/chain/add", json={
-        "receipt_id": receipt_id,
-        "file_hash": file_hash,
-        "uploader": uploader
-    })
-    
-    return {"receipt_id": receipt_id, "file_hash": file_hash, "status": "Stored on blockchain"}
-```
-
-#### Step 3: Verify route + QR code (`routes/verify.py`)
-```python
-from fastapi import APIRouter, UploadFile, File
-from fastapi.responses import StreamingResponse
-from utils import generate_hash
-import requests, qrcode, io
-
-router = APIRouter()
-
-@router.post("/verify")
-async def verify_receipt(file: UploadFile = File(...)):
-    file_bytes = await file.read()
-    file_hash = generate_hash(file_bytes)
-    
-    response = requests.get(f"http://blockchain:8001/chain/find?hash={file_hash}")
-    data = response.json()
-    
-    if data:
-        return {"status": "VALID ✅", "receipt_id": data["receipt_id"], "uploader": data["uploader"]}
-    return {"status": "INVALID ❌ — Receipt not found or tampered"}
-
-@router.get("/qr/{receipt_id}")
-def get_qr(receipt_id: str):
-    url = f"http://localhost:8000/verify-id/{receipt_id}"
-    img = qrcode.make(url)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="image/png")
+async def get_presigned_url(key: str, expires_in: int = 3600) -> str:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_executor,
+        partial(s3.generate_presigned_url, "get_object",
+                Params={"Bucket": BUCKET, "Key": key}, ExpiresIn=expires_in))
 ```
 
 ---
 
-### 🔷 MEMBER 4 — Frontend (`/frontend/`)
+## 🔷 MEMBER 4 — Next.js 16 Frontend + Better Auth
 
-#### Step 1: Bootstrap the Next.js app
+### Step 1: Install Dependencies
 ```bash
-npx create-next-app@latest frontend --js --tailwind --no-app --no-src-dir
+npx create-next-app@latest frontend --typescript --tailwind --app
 cd frontend
-npm install axios
+npm install better-auth @better-auth/client
+npm install axios lucide-react recharts framer-motion
+npx shadcn@latest init
 ```
 
-#### Step 2: Configure API base URL
-Create `frontend/lib/api.js`:
-```js
+### Step 2: `lib/auth.ts` — Better Auth Server Config
+```typescript
+import { betterAuth } from "better-auth";
+import { Pool } from "pg";
+import { admin } from "better-auth/plugins";
+
+export const auth = betterAuth({
+  database: new Pool({ connectionString: process.env.DATABASE_URL }),
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    },
+  },
+  plugins: [admin()],   // Enables role field: "admin" | "user"
+  session: {
+    expiresIn: 60 * 60 * 24 * 7,       // 7 days
+    cookieCache: { enabled: true, maxAge: 5 * 60 },
+  },
+});
+```
+
+### Step 3: `lib/auth-client.ts` — Client Hooks
+```typescript
+import { createAuthClient } from "better-auth/react";
+import { adminClient } from "better-auth/client/plugins";
+
+export const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+  plugins: [adminClient()],
+});
+
+export const { signIn, signOut, useSession, getSession } = authClient;
+```
+
+### Step 4: `app/api/auth/[...all]/route.ts`
+```typescript
+import { auth } from "@/lib/auth";
+import { toNextJsHandler } from "better-auth/next-js";
+
+export const { GET, POST } = toNextJsHandler(auth);
+```
+
+### Step 5: `middleware.ts` — Protect Dashboard & Admin
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionCookie } from "better-auth/cookies";
+
+const PROTECTED = ["/dashboard", "/admin"];
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  if (!PROTECTED.some(r => pathname.startsWith(r))) return NextResponse.next();
+
+  const sessionCookie = getSessionCookie(request);
+  if (!sessionCookie) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  const sessionRes = await fetch(`${request.nextUrl.origin}/api/auth/get-session`, {
+    headers: { cookie: request.headers.get("cookie") || "" },
+  });
+
+  if (!sessionRes.ok) return NextResponse.redirect(new URL("/login", request.url));
+
+  const session = await sessionRes.json();
+  if (session?.user?.role !== "admin") {
+    return NextResponse.redirect(new URL("/login?error=unauthorized", request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = { matcher: ["/dashboard/:path*", "/admin/:path*"] };
+```
+
+### Step 6: `app/login/page.tsx`
+```tsx
+"use client";
+import { signIn } from "@/lib/auth-client";
+import { useState } from "react";
+
+export default function LoginPage() {
+  const [loading, setLoading] = useState<string | null>(null);
+
+  const handleSignIn = async (provider: "google" | "github") => {
+    setLoading(provider);
+    await signIn.social({ provider, callbackURL: "/dashboard" });
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-10 w-full max-w-md shadow-2xl">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-white mb-2">⛓️ ChainVerify</h1>
+          <p className="text-gray-400 text-sm">Admin access only. Sign in to continue.</p>
+        </div>
+        <div className="space-y-4">
+          <button onClick={() => handleSignIn("google")} disabled={!!loading}
+            className="w-full flex items-center justify-center gap-3 bg-white text-gray-900
+                       font-semibold py-3 rounded-xl hover:bg-gray-100 transition disabled:opacity-50">
+            {loading === "google" ? "Redirecting..." : "Continue with Google"}
+          </button>
+          <button onClick={() => handleSignIn("github")} disabled={!!loading}
+            className="w-full flex items-center justify-center gap-3 bg-gray-800 text-white
+                       font-semibold py-3 rounded-xl hover:bg-gray-700 transition disabled:opacity-50">
+            {loading === "github" ? "Redirecting..." : "Continue with GitHub"}
+          </button>
+        </div>
+        <p className="text-center text-xs text-gray-600 mt-8">
+          Receipt upload and verification are available publicly without login.
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+### Step 7: `components/AuthGuard.tsx` — Session-Aware Navbar
+```tsx
+"use client";
+import { useSession, signOut } from "@/lib/auth-client";
+import Link from "next/link";
+
+export default function AuthGuard() {
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "admin";
+
+  return (
+    <nav className="bg-gray-900 border-b border-gray-800 px-8 py-4 flex items-center justify-between">
+      <div className="flex gap-6 text-sm font-medium">
+        <Link href="/" className="text-blue-400 hover:text-blue-300">Upload</Link>
+        <Link href="/verify" className="text-indigo-400 hover:text-indigo-300">Verify</Link>
+        {isAdmin && (
+          <>
+            <Link href="/dashboard" className="text-emerald-400 hover:text-emerald-300">Dashboard</Link>
+            <Link href="/admin" className="text-amber-400 hover:text-amber-300">Admin</Link>
+          </>
+        )}
+      </div>
+      <div className="flex items-center gap-4">
+        {session?.user ? (
+          <>
+            <span className="text-gray-400 text-sm">{session.user.email}</span>
+            <span className="text-xs bg-emerald-900 text-emerald-300 px-2 py-1 rounded-full">
+              {session.user.role}
+            </span>
+            <button onClick={() => signOut()} className="text-sm text-red-400 hover:text-red-300">
+              Sign out
+            </button>
+          </>
+        ) : (
+          <Link href="/login"
+            className="text-sm text-white bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-500">
+            Admin Login
+          </Link>
+        )}
+      </div>
+    </nav>
+  );
+}
+```
+
+### Step 8: `lib/api.ts` — Axios with Auth Interceptor
+```typescript
 import axios from "axios";
+import { getSession } from "@/lib/auth-client";
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api",
+});
+
+// Attach Better Auth session token for admin API calls to FastAPI
+api.interceptors.request.use(async (config) => {
+  const session = await getSession();
+  if (session?.session?.token) {
+    config.headers.Authorization = `Bearer ${session.session.token}`;
+  }
+  return config;
 });
 
 export default api;
 ```
 
-Add to `frontend/.env.local`:
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
+### Step 9: `lib/useWebSocket.ts` — Authenticated WS Hook
+```typescript
+import { useEffect, useRef, useState } from "react";
+import { getSession } from "@/lib/auth-client";
 
-#### Step 3: Upload Page (`pages/index.js`)
-```jsx
-import { useState } from "react";
-import api from "../lib/api";
+export function useWebSocket(url: string, maxMessages = 50) {
+  const [messages, setMessages] = useState<any[]>([]);
+  const [connected, setConnected] = useState(false);
+  const ws = useRef<WebSocket | null>(null);
 
-export default function UploadPage() {
-  const [file, setFile] = useState(null);
-  const [uploader, setUploader] = useState("");
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    const connect = async () => {
+      const session = await getSession();
+      const token = session?.session?.token;
+      if (!token) return;
 
-  const handleUpload = async () => {
-    if (!file) return;
-    setLoading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("uploader", uploader || "anonymous");
+      // Pass token as query param (WebSocket can't set headers)
+      ws.current = new WebSocket(`${url}?token=${token}`);
+      ws.current.onopen = () => setConnected(true);
+      ws.current.onclose = () => {
+        setConnected(false);
+        setTimeout(connect, 3000);
+      };
+      ws.current.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        setMessages(prev => [data, ...prev].slice(0, maxMessages));
+      };
+    };
+    connect();
+    return () => ws.current?.close();
+  }, [url]);
 
-    try {
-      const { data } = await api.post("/upload", formData);
-      setResult(data);
-    } catch (err) {
-      setResult({ error: "Upload failed. Is the backend running?" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-8">
-      <div className="bg-white rounded-2xl shadow-md p-8 w-full max-w-lg">
-        <h1 className="text-2xl font-bold mb-6 text-gray-800">📄 Upload Receipt</h1>
-
-        <input
-          type="text"
-          placeholder="Your name"
-          className="w-full border rounded-lg p-2 mb-4 text-sm"
-          value={uploader}
-          onChange={(e) => setUploader(e.target.value)}
-        />
-        <input
-          type="file"
-          accept=".pdf,image/*"
-          className="w-full mb-4 text-sm"
-          onChange={(e) => setFile(e.target.files[0])}
-        />
-        <button
-          onClick={handleUpload}
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? "Uploading..." : "Upload & Store on Blockchain"}
-        </button>
-
-        {result && !result.error && (
-          <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-4 text-sm">
-            <p className="font-semibold text-green-700 mb-1">✅ Stored on Blockchain</p>
-            <p><span className="font-medium">Receipt ID:</span> {result.receipt_id}</p>
-            <p className="break-all"><span className="font-medium">Hash:</span> {result.file_hash}</p>
-            <img
-              src={`${process.env.NEXT_PUBLIC_API_URL}/qr/${result.receipt_id}`}
-              alt="QR Code"
-              className="mt-4 w-36 h-36 mx-auto"
-            />
-            <p className="text-center text-xs text-gray-400 mt-1">Scan to verify</p>
-          </div>
-        )}
-        {result?.error && (
-          <p className="mt-4 text-red-500 text-sm">{result.error}</p>
-        )}
-      </div>
-    </div>
-  );
+  return { messages, connected };
 }
 ```
 
-#### Step 4: Verify Page (`pages/verify.js`)
-```jsx
-import { useState } from "react";
-import api from "../lib/api";
+### Step 10: Promote First Admin
+```typescript
+// scripts/make-admin.ts — run once after first login
+// Usage: npx ts-node scripts/make-admin.ts your@email.com
+import { Pool } from "pg";
 
-export default function VerifyPage() {
-  const [file, setFile] = useState(null);
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-  const handleVerify = async () => {
-    if (!file) return;
-    setLoading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const { data } = await api.post("/verify", formData);
-      setResult(data);
-    } catch (err) {
-      setResult({ status: "ERROR — Could not reach backend" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const isValid = result?.status?.includes("VALID ✅");
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-8">
-      <div className="bg-white rounded-2xl shadow-md p-8 w-full max-w-lg">
-        <h1 className="text-2xl font-bold mb-6 text-gray-800">🔍 Verify Receipt</h1>
-
-        <input
-          type="file"
-          accept=".pdf,image/*"
-          className="w-full mb-4 text-sm"
-          onChange={(e) => setFile(e.target.files[0])}
-        />
-        <button
-          onClick={handleVerify}
-          disabled={loading}
-          className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {loading ? "Verifying..." : "Verify Against Blockchain"}
-        </button>
-
-        {result && (
-          <div className={`mt-6 rounded-lg p-4 text-sm border ${
-            isValid
-              ? "bg-green-50 border-green-200 text-green-800"
-              : "bg-red-50 border-red-200 text-red-800"
-          }`}>
-            <p className="font-bold text-lg mb-2">{result.status}</p>
-            {isValid && (
-              <>
-                <p><span className="font-medium">Receipt ID:</span> {result.receipt_id}</p>
-                <p><span className="font-medium">Uploaded by:</span> {result.uploader}</p>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+async function makeAdmin(email: string) {
+  const { rowCount } = await pool.query(
+    `UPDATE "user" SET role = 'admin' WHERE email = $1`, [email]
   );
+  console.log(rowCount ? `✅ ${email} is now admin` : `❌ User not found: ${email}`);
+  await pool.end();
 }
+
+makeAdmin(process.argv[2]);
 ```
 
-#### Step 5: Add navigation (`pages/_app.js`)
-```jsx
-import Link from "next/link";
-import "../styles/globals.css";
+### Environment Variables (`frontend/.env.local`)
+```env
+# App
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:8000/api
+NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws/transactions
 
-export default function App({ Component, pageProps }) {
-  return (
-    <>
-      <nav className="bg-white shadow-sm px-8 py-4 flex gap-6 text-sm font-medium">
-        <Link href="/" className="text-blue-600 hover:underline">Upload</Link>
-        <Link href="/verify" className="text-indigo-600 hover:underline">Verify</Link>
-      </nav>
-      <Component {...pageProps} />
-    </>
-  );
-}
+# Better Auth
+BETTER_AUTH_SECRET=your-32-char-random-secret-here
+BETTER_AUTH_URL=http://localhost:3000
+
+# Google OAuth — console.developers.google.com
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# GitHub OAuth — github.com/settings/developers
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+
+# Shared DB
+DATABASE_URL=postgresql://receipts:receipts_secret@localhost:5432/receipts
 ```
-
-#### Key UI elements for the demo:
-- ✅ Green result card with Receipt ID, uploader name, and QR code — shown after upload
-- ❌ Red "INVALID / TAMPERED" card — shown when verifying a modified file
-- Clean two-page layout with top navigation
 
 ---
 
-### 🔷 MEMBER 5 — Docker & DevOps (`/`)
+## 🔷 MEMBER 5 — Docker, Redis, nginx & Performance
 
-#### Step 1: `Dockerfile.backend`
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY backend/requirements.txt .
-RUN pip install -r requirements.txt
-COPY backend/ .
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-#### Step 2: `Dockerfile.blockchain`
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY blockchain/ .
-RUN pip install fastapi uvicorn
-CMD ["uvicorn", "node:app", "--host", "0.0.0.0", "--port", "8001"]
-```
-
-#### Step 3: `docker-compose.yml`
+### `docker-compose.yml`
 ```yaml
 version: "3.9"
+
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: receipts
+      POSTGRES_PASSWORD: receipts_secret
+      POSTGRES_DB: receipts
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U receipts"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+
   blockchain:
     build:
       context: .
       dockerfile: Dockerfile.blockchain
+    environment:
+      REDIS_URL: redis://redis:6379
     ports:
       - "8001:8001"
-    networks:
-      - app-net
+    networks: [app-net]
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
 
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://receipts:receipts_secret@postgres:5432/receipts
+      REDIS_URL: redis://redis:6379
+      BLOCKCHAIN_URL: http://blockchain:8001
+      FRONTEND_URL: http://frontend:3000
     ports:
       - "8000:8000"
-    env_file:
-      - ./backend/.env          # R2 credentials loaded here
+    networks: [app-net]
+    restart: unless-stopped
     depends_on:
-      - blockchain
-    networks:
-      - app-net
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      blockchain:
+        condition: service_started
 
   frontend:
-    image: node:18-alpine
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-    command: sh -c "npm install && npm run dev"
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    env_file:
+      - ./frontend/.env.local
     ports:
       - "3000:3000"
-    networks:
-      - app-net
+    networks: [app-net]
+    restart: unless-stopped
+    depends_on: [backend]
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    networks: [app-net]
+    depends_on: [backend, frontend]
+
+volumes:
+  pg_data:
 
 networks:
   app-net:
+    driver: bridge
 ```
 
-#### Step 4: Test the full stack
+### `routes/ws.py` — Authenticated WebSocket
+```python
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+import redis.asyncio as aioredis
+import httpx, json, os
+
+router = APIRouter()
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://frontend:3000")
+
+@router.websocket("/ws/transactions")
+async def ws_transactions(websocket: WebSocket, token: str = Query(...)):
+    # Verify admin session before accepting connection
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{FRONTEND_URL}/api/auth/get-session",
+                                headers={"Authorization": f"Bearer {token}"})
+    if resp.status_code != 200 or resp.json().get("user", {}).get("role") != "admin":
+        await websocket.close(code=4001)
+        return
+
+    await websocket.accept()
+    r = aioredis.from_url(REDIS_URL)
+    pubsub = r.pubsub()
+    await pubsub.subscribe("transactions")
+    try:
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                await websocket.send_text(message["data"].decode())
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await pubsub.unsubscribe("transactions")
+        await r.close()
+```
+
+### Load Testing (Wednesday)
 ```bash
-docker compose up --build
-# Backend:    http://localhost:8000
-# Frontend:   http://localhost:3000
-# Blockchain: http://localhost:8001
-# Storage:    Cloudflare R2 (external — check via Cloudflare dashboard)
+pip install locust
+
+# locustfile.py
+from locust import HttpUser, task, between
+
+class PublicUser(HttpUser):
+    wait_time = between(0.1, 0.5)
+
+    @task(3)
+    def upload_receipt(self):
+        self.client.post("/api/upload",
+            files={"file": ("test.pdf", b"%PDF fake content", "application/pdf")},
+            data={"uploader": "load_test"})
+
+    @task(1)
+    def verify_receipt(self):
+        self.client.post("/api/verify",
+            files={"file": ("test.pdf", b"%PDF fake content", "application/pdf")})
+
+# Run: locust -f locustfile.py --host http://localhost:8000 --users 100 --spawn-rate 10
 ```
 
 ---
 
 ## 🎬 Demo Script (Thursday)
 
-### Who does what during the demo:
+| Step | Action | WOW Factor | Who |
+|------|--------|-----------|-----|
+| 1 | `docker compose up` — 6 services start cleanly | DevOps magic | M5 |
+| 2 | Open `/` — public upload page, zero login required | Clean public UX | M4 |
+| 3 | Upload a PDF receipt — thumbnail + QR code appear instantly | Slick upload flow | M3 |
+| 4 | Click "Admin Login" → Google OAuth → redirect to Dashboard | Seamless auth | M4 |
+| 5 | Dashboard loads — TX feed live, block counter ticking | Real-time blockchain | M4 |
+| 6 | Upload 10 receipts rapidly — blocks fill up in the visualizer | Batching in action | M2 |
+| 7 | Verify original PDF → ✅ VALID with full metadata | End-to-end proof | M3 |
+| 8 | Tamper PDF (one byte) → re-verify → ❌ INVALID | Tamper detection 🔥 | M1 |
+| 9 | Hit `/api/chain` without token → 401. Login → chain visible | Auth working | M2 |
+| 10 | Open Cloudflare R2 dashboard → files + thumbnails in bucket | Cloud storage proof | M3 |
+| 11 | Load test: 100 users → TX/sec chart spikes live on dashboard | Production scale | M5 |
+| 12 | Sign out → try `/dashboard` → redirect to `/login` | Security tight | M4 |
 
-| Step | Action | Who Presents |
-|------|--------|--------------|
-| 1 | `docker compose up` — show all services starting | Member 5 |
-| 2 | Open frontend, upload a sample receipt PDF | Member 4 |
-| 3 | Show response: receipt ID, hash, "Stored on Blockchain" | Member 2 |
-| 4 | Show QR code generated for the receipt | Member 3 |
-| 5 | Verify the same file → show ✅ VALID | Member 3 |
-| 6 | Open the file in a text editor, change one byte, re-upload for verify → show ❌ INVALID | Member 1 |
-| 7 | Explain the blockchain chain structure (`/chain` endpoint) | Member 1 |
-| 8 | Open Cloudflare R2 dashboard → show uploaded receipt files in bucket | Member 3 |
-
-### Key talking points:
-- "We store only the SHA-256 hash on-chain, not the file itself — privacy by design"
-- "Changing even one character in the receipt changes the hash completely — tamper detection"
-- "Each block contains the previous block's hash — breaking the chain is detectable"
-- "Docker Compose lets us spin up all services with one command — R2 is external so no storage container needed"
-- "Using Cloudflare R2 gives us zero-egress-fee cloud storage with an S3-compatible API"
+### Key Talking Points
+- **"Better Auth"** — modern OAuth (Google + GitHub), sessions in Postgres, built-in admin roles, zero config overhead
+- **"Public by design"** — anyone can upload/verify; only blockchain internals are admin-gated
+- **"SHA-256 + Merkle tree"** — cryptographic proofs on-chain, actual files in R2 — privacy by design
+- **"Batch processing"** — 10 TXs per block, auto-sealed every 5 seconds — high throughput by design
+- **"Thread-safe blockchain"** — RLock ensures zero race conditions under load
+- **"PostgreSQL + Redis"** — production-grade persistence + real-time pub/sub
+- **"Multi-format"** — PDFs, JPEGs, PNGs hash-normalized identically to prevent false positives
+- **"WebSocket feed"** — Redis → FastAPI → Next.js in real time, zero polling
 
 ---
 
@@ -590,51 +1083,68 @@ docker compose up --build
 
 | Risk | Mitigation |
 |------|-----------|
-| R2 credentials misconfigured | Double-check `.env` file; test with a standalone `boto3` script before integrating |
-| R2 bucket permissions error | Ensure API token has Read & Write on the correct bucket |
-| Docker networking issues | Run services locally without Docker for demo |
-| Frontend not ready | Use FastAPI's built-in `/docs` (Swagger UI) for demo — it works perfectly |
-| Blockchain node crashes | Use an in-memory singleton instead of separate service |
-| Short on time on frontend | Use FastAPI's `/docs` (Swagger UI) for demo — fully functional without any frontend |
+| OAuth redirect URI mismatch | Set `http://localhost:3000/api/auth/callback/google` in Google Console before Tuesday |
+| Better Auth session not reaching FastAPI | Test `/api/auth/get-session` manually with curl before integration |
+| No admin user for demo | Run `make-admin.ts` the night before, verify login works |
+| R2 credentials fail | Pre-test with standalone `boto3` script; fall back to local disk |
+| PostgreSQL slow to start | `depends_on: condition: service_healthy` in compose |
+| WebSocket disconnects | Auto-reconnect with 3s delay in `useWebSocket` hook |
+| Frontend build fails | `docker-compose.override.yml` with `npm run dev` fallback |
+| Blockchain node crashes | `restart: unless-stopped` in compose |
+| Load test overwhelms demo machine | Cap at 50 users; have pre-recorded video as fallback |
 
 ---
 
 ## ✅ Daily Checklist
 
 ### Sunday EOD
-- [ ] Repo created on GitHub, everyone cloned
-- [ ] Blockchain `block.py` and `blockchain.py` working (Member 1)
-- [ ] FastAPI app boots with `uvicorn` (Member 2)
+- [ ] GitHub repo + branch strategy set
+- [ ] `block.py`, `blockchain.py` with Merkle + thread lock (M1)
+- [ ] FastAPI boots, PostgreSQL connected, tables auto-created (M2)
+- [ ] R2 bucket created, standalone upload test passing (M3)
+- [ ] Next.js 16 scaffolded + Better Auth installed (M4)
+- [ ] Redis + Postgres containers healthy in Docker (M5)
 
 ### Monday EOD
-- [ ] `POST /upload` returns hash + receipt ID
-- [ ] Hash stored in blockchain
-- [ ] File saved in Cloudflare R2
+- [ ] `POST /upload` handles PDF, JPEG, PNG, JPG (M3)
+- [ ] File in R2 + hash in PostgreSQL + TX in blockchain (M2/M3)
+- [ ] Redis pub/sub broadcasting new transactions (M1)
+- [ ] `GET /chain` and `GET /chain/stats` working (M1)
 
 ### Tuesday EOD
-- [ ] `POST /verify` returns VALID/INVALID
-- [ ] QR code endpoint working
-- [ ] Next.js upload page (`/`) working end-to-end
-- [ ] Next.js verify page (`/verify`) shows green/red result card
+- [ ] Better Auth — Google + GitHub OAuth working (M4)
+- [ ] `/login` page functional (M4)
+- [ ] Next.js middleware protecting `/dashboard` + `/admin` (M4)
+- [ ] FastAPI `require_admin` guarding `/api/chain/*` (M2)
+- [ ] WebSocket with token verification working (M5)
+- [ ] Dashboard: live TX feed + stats + blockchain visualizer (M4)
+- [ ] Upload + Verify pages complete (M4)
+- [ ] First team member promoted to admin via `make-admin.ts` (M4)
 
 ### Wednesday EOD
-- [ ] `docker compose up` starts everything cleanly
-- [ ] Full upload → verify flow tested 3+ times
-- [ ] Tamper demo tested (modify file → INVALID)
-- [ ] Demo script rehearsed once
+- [ ] `docker compose up --build` starts all 6 services cleanly (M5)
+- [ ] Full flow tested 5+ times end-to-end (all)
+- [ ] Auth flow tested: login → dashboard → logout → redirect (M4)
+- [ ] Tamper demo tested and reliable (M1)
+- [ ] Load test run: 50+ concurrent users (M5)
+- [ ] Demo rehearsed with all 5 members (all)
 
 ### Thursday
-- [ ] Demo ready 30 min before presentation
-- [ ] Each member knows their part
-- [ ] Have sample receipts (PDFs/images) ready to upload
+- [ ] Sample receipts prepared (3× PDF, 2× JPEG, 1× PNG)
+- [ ] Tampered receipt ready and tested
+- [ ] Admin account verified — login working
+- [ ] Demo run 30 min before presentation
+- [ ] Each member knows exactly what to click and say
 
 ---
 
-## 📦 Sample Files to Prepare for Demo
-- 2-3 sample PDF receipts (can be fake bills made in Word)
-- A "tampered" version of one receipt (open in Notepad, change one character, save)
-- These should be tested the night before
+## 📦 Sample Files for Demo
+- `receipt_amazon.pdf` — fake Amazon order PDF
+- `receipt_electricity_bill.jpg` — scanned bill image
+- `receipt_restaurant.png` — restaurant receipt PNG
+- `receipt_amazon_TAMPERED.pdf` — same file, one byte changed in a text editor
+- All files must be tested the night before — upload each, verify each, confirm tamper fails
 
 ---
 
-*Good luck — this is a solid, demonstrable project. The tamper detection moment in the demo is always impressive to instructors!* 🚀
+*Production-grade auth, real-time blockchain dashboard, multi-format receipts, load-tested infrastructure, and a login screen that impresses from the first click. Go build something great.* 🚀

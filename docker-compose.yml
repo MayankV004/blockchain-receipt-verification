@@ -1,37 +1,93 @@
 version: "3.9"
+
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: receipts
+      POSTGRES_PASSWORD: receipts_secret
+      POSTGRES_DB: receipts
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U receipts"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+
   blockchain:
     build:
-      context: .
-      dockerfile: Dockerfile.blockchain
+      context: ./blockchain
+      dockerfile: ../Dockerfile.blockchain
+    environment:
+      REDIS_URL: redis://redis:6379
     ports:
       - "8001:8001"
-    networks:
-      - app-net
+    networks: [app-net]
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
 
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.backend
+      context: ./backend
+      dockerfile: ../Dockerfile.backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://receipts:receipts_secret@postgres:5432/receipts
+      REDIS_URL: redis://redis:6379
+      BLOCKCHAIN_URL: http://blockchain:8001
+      FRONTEND_URL: http://frontend:3000
     ports:
       - "8000:8000"
+    networks: [app-net]
+    restart: unless-stopped
     depends_on:
-      - blockchain
-    networks:
-      - app-net
-    volumes:
-      - ./local_storage:/app/local_storage
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      blockchain:
+        condition: service_started
 
   frontend:
-    image: node:20-alpine
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-    command: sh -c "npm install && HOSTNAME=0.0.0.0 npm run dev"
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    env_file:
+      - ./frontend/.env.local
     ports:
       - "3000:3000"
-    networks:
-      - app-net
+    networks: [app-net]
+    restart: unless-stopped
+    depends_on: [backend]
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    networks: [app-net]
+    depends_on: [backend, frontend]
+
+volumes:
+  pg_data:
 
 networks:
   app-net:
+    driver: bridge

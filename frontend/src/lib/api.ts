@@ -1,18 +1,22 @@
 import axios from "axios";
+import { getSession } from "@/lib/auth-client";
 
-// Access the API securely
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api",
 });
 
-export interface UploadResponse {
+// Attach Better Auth session token for admin API calls to FastAPI
+api.interceptors.request.use(async (config) => {
+  const sessionRes = await getSession();
+  const data = sessionRes?.data as any; // Ignore strict typing error on getSession nested data
+  if (data?.session?.token) {
+    config.headers.Authorization = `Bearer ${data.session.token}`;
+  }
+  return config;
+});
+
+export type UploadResponse = {
   receipt_id: string;
   file_hash: string;
   status: string;
-}
-
-export interface VerifyResponse {
-  status: string;
-  receipt_id?: string;
-  uploader?: string;
-}
+};

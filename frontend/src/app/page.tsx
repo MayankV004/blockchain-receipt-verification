@@ -5,7 +5,7 @@ import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   UploadCloud,
-  File,
+  FileText,
   CheckCircle2,
   ChevronRight,
   Hash,
@@ -130,7 +130,7 @@ export default function Home() {
                     file.type.includes("image") ? (
                       <FileImage className="w-8 h-8 text-indigo-400" />
                     ) : (
-                      <File className="w-8 h-8 text-indigo-400" />
+                      <FileText className="w-8 h-8 text-indigo-400" />
                     )
                   ) : (
                     <UploadCloud
