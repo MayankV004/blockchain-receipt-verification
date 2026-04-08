@@ -37,7 +37,7 @@ export default function LoginPage() {
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 mb-5">
               <Blocks className="w-8 h-8 text-indigo-400" />
             </div>
-            <h1 className="text-2xl font-extrabold text-white mb-2 tracking-tight">ChainVerify</h1>
+            <h1 className="text-2xl font-extrabold text-white mb-2 tracking-tight">Origyn</h1>
             <p className="text-sm text-zinc-500">
               Admin access • Sign in to continue
             </p>

@@ -178,7 +178,7 @@ export default function AdminPage() {
             </div>
             <div>
               <h2 className="text-base font-bold text-white">System Architecture</h2>
-              <p className="text-xs text-zinc-600">ChainVerify infrastructure pipeline</p>
+              <p className="text-xs text-zinc-600">Origyn infrastructure pipeline</p>
             </div>
           </div>
 

@@ -167,7 +167,7 @@ export default function DashboardPage() {
               Control Panel
             </h1>
             <p className="text-base text-zinc-500 max-w-xl">
-              Real-time telemetry and blockchain analytics for ChainVerify
+              Real-time telemetry and blockchain analytics for Origyn
             </p>
           </motion.div>
           <div className="flex items-center gap-3 text-xs text-zinc-600">

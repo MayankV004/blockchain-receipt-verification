@@ -10,9 +10,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ChainVerify | Enterprise Digital Bill Verification",
+  title: "Origyn | Enterprise Document Verification",
   description:
-    "Tamper-proof blockchain-powered bill verification with real-time monitoring and cryptographic integrity proofs",
+    "Every document has an origin. Origyn proves it — tamper-proof blockchain-powered document verification with real-time monitoring and cryptographic integrity proofs.",
 };
 
 export default function RootLayout({
