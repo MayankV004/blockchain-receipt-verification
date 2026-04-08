@@ -57,7 +57,7 @@ export default function LoginPage() {
               <ArrowRight className="w-4 h-4 text-zinc-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
             </button>
 
-            <button
+            {/* <button
               onClick={() => handleSignIn("github")}
               disabled={!!loading}
               className="w-full group flex items-center gap-3 py-3.5 px-5 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-xl transition-all border border-white/[0.06] disabled:opacity-50 disabled:cursor-wait"
@@ -67,7 +67,7 @@ export default function LoginPage() {
                 {loading === "github" ? "Redirecting..." : "Continue with GitHub"}
               </span>
               <ArrowRight className="w-4 h-4 text-zinc-500 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-            </button>
+            </button> */}
           </div>
 
           {/* Divider */}
