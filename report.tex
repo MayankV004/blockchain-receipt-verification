@@ -1,0 +1,1435 @@
+% ============================================================================
+%  ChainVerify (Origyn) — Project Report
+%  Enterprise Digital Bill & Receipt Verification System using Blockchain
+% ============================================================================
+
+\documentclass[12pt, a4paper]{report}
+
+% --------------- Packages ---------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{amsmath, amssymb}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{parskip}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, calc}
+
+% --------------- Hyperref setup ---------------------------------------------
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    citecolor=green!50!black,
+    urlcolor=blue!60!black,
+    pdftitle={ChainVerify — Blockchain-Based Document Verification System},
+    pdfauthor={},
+}
+
+% --------------- Code listing style -----------------------------------------
+\definecolor{codebg}{HTML}{F5F5F5}
+\definecolor{codeframe}{HTML}{CCCCCC}
+\definecolor{codekw}{HTML}{0000FF}
+\definecolor{codecomment}{HTML}{228B22}
+\definecolor{codestring}{HTML}{A31515}
+
+\lstset{
+    backgroundcolor=\color{codebg},
+    frame=single,
+    rulecolor=\color{codeframe},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codekw}\bfseries,
+    commentstyle=\color{codecomment}\itshape,
+    stringstyle=\color{codestring},
+    breaklines=true,
+    breakatwhitespace=false,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b,
+}
+
+% --------------- Header / Footer --------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\leftmark}
+\fancyhead[R]{\small ChainVerify — Project Report}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.2pt}
+
+% --------------- Chapter/Section formatting ---------------------------------
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{18pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{-20pt}{30pt}
+
+% ============================================================================
+\begin{document}
+
+% ========================== TITLE PAGE ======================================
+\begin{titlepage}
+    \centering
+    \vspace*{1cm}
+
+    {\Huge\bfseries ChainVerify (Origyn)}\\[0.5cm]
+    {\LARGE Enterprise Digital Bill \& Receipt\\Verification System using Blockchain}
+
+    \vspace{1.5cm}
+
+    {\large\textbf{Project Report}}
+
+    \vspace{2cm}
+
+    \rule{\textwidth}{0.4pt}\\[0.4cm]
+    {\large
+    \textit{A comprehensive report on the design, architecture, implementation,\\
+    and deployment of a blockchain-based document verification platform.}}\\[0.4cm]
+    \rule{\textwidth}{0.4pt}
+
+    \vspace{2cm}
+
+    {\large\textbf{Team Members}}\\[0.5cm]
+    {\large
+    \begin{tabular}{r l}
+        \textbf{2023BCS0204} & Mayank Verma \\
+        \textbf{2023BCS0147} & Anoushka Samanta \\
+        \textbf{2023BCS0186} & Priyansh Gautam \\
+        \textbf{2023BCD0011} & Komal \\
+        \textbf{2023BCS0209} & Anirud Sandeep Gupta \\
+    \end{tabular}
+    }
+
+    \vspace{1.5cm}
+
+    {\large
+    \begin{tabular}{rl}
+        \textbf{Technologies:} & Python, FastAPI, Next.js, TypeScript, Redis, PostgreSQL \\
+        \textbf{Infrastructure:} & Docker, Nginx, Cloudflare R2 \\
+        \textbf{Version:} & 2.0 \\
+    \end{tabular}
+    }
+
+    \vfill
+
+    {\large \today}
+\end{titlepage}
+
+% ========================== CERTIFICATE / DECLARATION =======================
+% (Placeholder — fill in institutional details as needed)
+
+% ========================== ABSTRACT ========================================
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+In the modern digital economy, receipts, invoices, and business documents are
+trivially easy to forge or tamper with. A PDF can be opened, edited, and
+re-saved with no trace of modification. This report presents
+\textbf{ChainVerify} (branded as \textbf{Origyn}), a full-stack enterprise
+system that binds every uploaded document to a SHA-256 cryptographic fingerprint
+and permanently records it on a custom-built blockchain. The blockchain acts as
+an immutable ledger: once a record is written, it cannot be altered without
+invalidating every subsequent block. To verify a document, a user submits the
+original file — the system recomputes its hash and looks it up on the chain. If
+the hashes match, the document is genuine and untampered; if they differ (even
+by a single character), verification fails.
+
+The system is implemented as a microservices architecture with six Docker
+containers: a Next.js 14 frontend, a FastAPI backend, a custom blockchain node,
+Redis for pub/sub and state persistence, PostgreSQL for authentication, and
+Nginx as a reverse proxy with rate limiting. The platform supports real-time
+WebSocket feeds, QR-code-based verification, role-based admin dashboards, and
+OAuth2 authentication — all deployed via Docker Compose.
+
+\textbf{Keywords:} Blockchain, SHA-256, Document Verification, Merkle Tree,
+Microservices, FastAPI, Next.js, Docker, Immutable Ledger.
+
+% ========================== TABLE OF CONTENTS ===============================
+\tableofcontents
+
+% ============================================================================
+%                              CHAPTER 1: INTRODUCTION
+% ============================================================================
+\chapter{Introduction}
+
+\section{Problem Statement}
+
+In the real world, receipts, bills, invoices, and documents are trivially easy
+to forge or tamper with. A PDF can be opened, edited with any tool, and
+re-saved. There is no way for a recipient to know if the receipt they received
+is the same one originally generated. This causes:
+
+\begin{itemize}
+    \item Financial fraud via fake invoices
+    \item Fake warranty claims using tampered receipts
+    \item Manipulated tax documents
+    \item Counterfeit business records with no audit trail
+\end{itemize}
+
+Traditional centralized verification systems rely on a single trusted
+authority, introducing a single point of failure and requiring blind trust.
+
+\section{Proposed Solution}
+
+\textbf{ChainVerify} binds every uploaded document to a cryptographic
+fingerprint (SHA-256 hash) and permanently records that fingerprint on a custom
+blockchain. The blockchain acts as an immutable ledger: once a record is
+written, it cannot be altered without invalidating every subsequent block.
+
+To verify a document, a user submits the original file — the system recomputes
+its hash and searches the blockchain. If the hashes match, the document is
+genuine and unmodified. If they do not match (even a single changed character),
+the verification fails.
+
+\section{Objectives}
+
+\begin{enumerate}
+    \item Design and implement a custom blockchain with SHA-256 hashing and
+          Merkle Tree integrity verification.
+    \item Build a full-stack web application for document upload, anchoring,
+          and verification.
+    \item Implement a microservices architecture that is horizontally scalable
+          and production-ready.
+    \item Provide real-time monitoring via WebSocket feeds and admin dashboards.
+    \item Ensure security through rate limiting, CORS, session-based auth,
+          and cryptographic tamper detection.
+\end{enumerate}
+
+\section{Scope}
+
+The system covers:
+\begin{itemize}
+    \item Uploading and hashing of PDF, TXT, JPEG, and PNG files (up to 10\,MB).
+    \item Blockchain anchoring with batch-sealed blocks.
+    \item Verification by file re-upload or receipt UUID.
+    \item QR code generation for receipt links.
+    \item Admin dashboard with analytics, block explorer, and real-time feed.
+    \item Containerized deployment with Docker Compose.
+\end{itemize}
+
+
+% ============================================================================
+%                        CHAPTER 2: LITERATURE SURVEY
+% ============================================================================
+\chapter{Literature Survey}
+
+\section{Blockchain Fundamentals}
+
+A blockchain is a distributed, append-only ledger where data is stored in
+sequentially linked blocks. Each block contains a cryptographic hash of the
+previous block, creating a chain that is tamper-evident by design. If any block
+is modified, every subsequent block's hash becomes invalid, making unauthorized
+changes immediately detectable.
+
+\subsection{Hash Functions and SHA-256}
+
+SHA-256 (Secure Hash Algorithm, 256-bit) is a member of the SHA-2 family
+designed by the NSA. It produces a fixed-length 256-bit (32-byte) digest from
+arbitrary input data. Key properties:
+
+\begin{itemize}
+    \item \textbf{Determinism:} The same input always produces the same hash.
+    \item \textbf{Avalanche effect:} A single-bit change in input produces a
+          completely different hash.
+    \item \textbf{Pre-image resistance:} Given a hash, it is computationally
+          infeasible to find the original input.
+    \item \textbf{Collision resistance:} It is infeasible to find two distinct
+          inputs that produce the same hash.
+\end{itemize}
+
+\subsection{Merkle Trees}
+
+A Merkle Tree is a binary tree where every leaf node is the hash of a data
+item, and every parent node is the hash of its two children. The root of this
+tree—the \textit{Merkle Root}—is a single hash that summarizes all the data in
+the tree. This allows:
+
+\begin{itemize}
+    \item Efficient verification: $O(\log n)$ proof that a specific transaction
+          is included in a block.
+    \item Tamper detection: altering any leaf changes the root.
+\end{itemize}
+
+\subsection{Consensus Mechanisms}
+
+In distributed blockchain networks, consensus algorithms ensure all nodes agree
+on the canonical chain. Common mechanisms include:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Algorithm} & \textbf{Used In} & \textbf{Description} \\
+\midrule
+Proof of Work (PoW) & Bitcoin & Nodes compete to solve a cryptographic puzzle;
+the winner adds the next block. \\
+Proof of Stake (PoS) & Ethereum & Validators stake cryptocurrency; selected
+proportionally. \\
+PBFT & Hyperledger & Majority vote among known validators. \\
+Proof of Authority (PoA) & Private chains & Pre-approved trusted identities
+serve as validators. \\
+\bottomrule
+\end{tabularx}
+\caption{Comparison of consensus mechanisms.}
+\end{table}
+
+\section{Related Work}
+
+\begin{itemize}
+    \item \textbf{Bitcoin (2008):} Introduced blockchain as a decentralized
+    cryptocurrency ledger using Proof of Work.
+    \item \textbf{Ethereum (2015):} Extended blockchain with smart contracts,
+    enabling programmable decentralized applications.
+    \item \textbf{Hyperledger Fabric:} A permissioned blockchain framework
+    designed for enterprise use, employing PBFT-style consensus among known
+    organizations.
+    \item \textbf{Document notarization services:} Platforms like Stampery and
+    OriginalMy anchor document hashes on public blockchains (Bitcoin/Ethereum)
+    for proof of existence.
+\end{itemize}
+
+\section{Gaps Addressed}
+
+Existing solutions either require cryptocurrency transactions (costly and
+slow), depend on public blockchains (privacy concerns), or lack an integrated
+full-stack user experience. ChainVerify addresses these gaps by providing a
+private, cost-free, containerized, full-stack system with a custom blockchain
+optimized for document verification.
+
+
+% ============================================================================
+%                     CHAPTER 3: SYSTEM ARCHITECTURE
+% ============================================================================
+\chapter{System Architecture}
+
+\section{High-Level Overview}
+
+The system follows a \textbf{microservices architecture} with six Docker
+containers running on a shared internal bridge network (\texttt{app-net}). Only
+port 80 (Nginx) is exposed to the outside world. All inter-service
+communication uses Docker's internal DNS.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=1.2cm and 2cm,
+    box/.style={draw, rounded corners, minimum width=3cm, minimum height=1cm,
+                align=center, fill=blue!8},
+    extbox/.style={draw, rounded corners, minimum width=3cm, minimum height=1cm,
+                   align=center, fill=orange!10},
+    arr/.style={-{Stealth[length=3mm]}, thick},
+]
+    % Nodes
+    \node[extbox] (user) {User (Browser)};
+    \node[box, below=of user] (nginx) {Nginx\\Port 80};
+    \node[box, below left=1.5cm and 2cm of nginx] (frontend) {Frontend\\Next.js :3000};
+    \node[box, below right=1.5cm and 2cm of nginx] (backend) {Backend\\FastAPI :8000};
+    \node[box, below left=1.5cm and 0.5cm of backend] (blockchain) {Blockchain Node\\FastAPI :8001};
+    \node[box, below right=1.5cm and 0.5cm of backend] (redis) {Redis\\:6379};
+    \node[box, below=1.5cm of blockchain] (postgres) {PostgreSQL\\:5432};
+    \node[extbox, below=1.5cm of redis] (r2) {Cloudflare R2\\Object Storage};
+
+    % Arrows
+    \draw[arr] (user) -- (nginx);
+    \draw[arr] (nginx) -- (frontend);
+    \draw[arr] (nginx) -- (backend);
+    \draw[arr] (backend) -- (blockchain);
+    \draw[arr] (backend) -- (redis);
+    \draw[arr] (backend) -- (postgres);
+    \draw[arr] (backend) -- (r2);
+    \draw[arr] (blockchain) -- (redis);
+\end{tikzpicture}
+\caption{High-level system architecture.}
+\end{figure}
+
+\section{Service Descriptions}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Service} & \textbf{Port} & \textbf{Role} \\
+\midrule
+Nginx & 80 & Reverse proxy, rate limiting, security headers, gzip, WebSocket proxy \\
+Frontend & 3000 & Next.js 14 — upload page, verify page, admin dashboard, login \\
+Backend & 8000 & FastAPI — REST API, file hashing, blockchain communication, analytics \\
+Blockchain Node & 8001 & FastAPI — custom blockchain with batch sealing and Merkle Trees \\
+Redis & 6379 & Pub/Sub event bus, blockchain state persistence, activity log, stats \\
+PostgreSQL & 5432 & Authentication tables (Better Auth schema) \\
+Cloudflare R2 & — & S3-compatible object storage for uploaded files \\
+\bottomrule
+\end{tabularx}
+\caption{Service roles and ports.}
+\end{table}
+
+\section{Docker Compose Orchestration}
+
+All six services are defined in a single \texttt{docker-compose.yml} file.
+Health checks and dependency ordering ensure correct startup:
+
+\begin{verbatim}
+postgres → redis → blockchain → backend → frontend → nginx
+\end{verbatim}
+
+The \texttt{depends\_on} directive with \texttt{condition: service\_healthy}
+ensures that upstream services (PostgreSQL, Redis) are fully ready before
+downstream services (Backend) start. Docker volumes (\texttt{pg\_data},
+\texttt{redis\_data}) persist data across container restarts.
+
+
+% ============================================================================
+%                       CHAPTER 4: TECHNOLOGY STACK
+% ============================================================================
+\chapter{Technology Stack}
+
+\section{Backend \& Blockchain Technologies}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Technology} & \textbf{Version} & \textbf{Role and Justification} \\
+\midrule
+Python & 3.11 & Primary language; rich ecosystem, readable, fast prototyping \\
+FastAPI & 0.115 & Async REST framework; native async/await, auto OpenAPI docs, Pydantic validation \\
+Uvicorn & — & Production ASGI server with hot-reload support \\
+Redis & 7 & In-memory pub/sub, cache, activity log; LRU eviction policy \\
+SQLAlchemy & — & ORM for PostgreSQL; database-agnostic, handles schema migrations \\
+httpx & — & Async HTTP client for backend-to-blockchain calls \\
+boto3 & — & AWS/S3-compatible SDK for Cloudflare R2 file storage \\
+PyPDF2 & — & PDF text extraction for content-aware hashing \\
+hashlib & — & Standard library SHA-256 cryptographic hashing \\
+qrcode & — & QR code generation for receipt verification links \\
+\bottomrule
+\end{tabularx}
+\caption{Backend and blockchain technology stack.}
+\end{table}
+
+\section{Frontend Technologies}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Technology} & \textbf{Role and Justification} \\
+\midrule
+Next.js 14 & React meta-framework with server components, app router, SSR \\
+TypeScript 5.0 & Type-safe JavaScript; compile-time bug catching \\
+Tailwind CSS & Utility-first CSS framework for rapid styling \\
+Framer Motion & Smooth page and component animations \\
+Axios & Promise-based HTTP client with auth-header interceptor \\
+Better Auth & Full-stack auth: Google/GitHub OAuth, admin roles, sessions \\
+react-dropzone & Drag-and-drop file upload with type/size filtering \\
+lucide-react & Consistent, lightweight SVG icon set \\
+react-hot-toast & Accessible toast notifications \\
+\bottomrule
+\end{tabularx}
+\caption{Frontend technology stack.}
+\end{table}
+
+\section{Infrastructure Technologies}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Technology} & \textbf{Role and Justification} \\
+\midrule
+Docker + Compose & Containerization; consistent environments, one-command deployment \\
+Nginx & Single entry point; rate limiting, security headers, WebSocket proxying \\
+PostgreSQL 16 & ACID-compliant relational database for auth tables \\
+Cloudflare R2 & S3-compatible object storage; no egress fees, global CDN \\
+\bottomrule
+\end{tabularx}
+\caption{Infrastructure technology stack.}
+\end{table}
+
+
+% ============================================================================
+%                    CHAPTER 5: BLOCKCHAIN INTERNALS
+% ============================================================================
+\chapter{Blockchain Internals}
+
+\section{Block Data Structure}
+
+Each block in the chain is an instance of the \texttt{Block} class and contains
+the following fields:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\texttt{index} & int & Sequential block number (0 for genesis) \\
+\texttt{timestamp} & float & Unix timestamp of block creation \\
+\texttt{transactions} & List[Dict] & Receipt records stored in this block \\
+\texttt{previous\_hash} & str & SHA-256 hash of the previous block \\
+\texttt{merkle\_root} & str & Merkle Root of all transactions \\
+\texttt{nonce} & int & Reserved for future Proof of Work (currently 0) \\
+\texttt{hash} & str & SHA-256 hash of this block's header \\
+\bottomrule
+\end{tabularx}
+\caption{Block data structure fields.}
+\end{table}
+
+\section{Hash Computation}
+
+The block hash is computed by serializing the header fields (index, timestamp,
+Merkle root, previous hash, nonce) into a JSON string with sorted keys, then
+applying SHA-256:
+
+\begin{lstlisting}[language=Python, caption={Block hash computation.}]
+def compute_hash(self) -> str:
+    block_data = json.dumps({
+        "index": self.index,
+        "timestamp": self.timestamp,
+        "merkle_root": self.merkle_root,
+        "previous_hash": self.previous_hash,
+        "nonce": self.nonce,
+    }, sort_keys=True)
+    return hashlib.sha256(block_data.encode()).hexdigest()
+\end{lstlisting}
+
+\section{Merkle Tree Implementation}
+
+The \texttt{MerkleTree} class computes a root hash from a list of transactions:
+
+\begin{lstlisting}[language=Python, caption={Merkle Tree root computation.}]
+@staticmethod
+def compute_root(transactions: List[Dict]) -> str:
+    if not transactions:
+        return hashlib.sha256(b"empty").hexdigest()
+    leaves = [
+        hashlib.sha256(
+            json.dumps(tx, sort_keys=True).encode()
+        ).hexdigest()
+        for tx in transactions
+    ]
+    while len(leaves) > 1:
+        if len(leaves) % 2 != 0:
+            leaves.append(leaves[-1])  # Duplicate last leaf
+        leaves = [
+            hashlib.sha256(
+                (leaves[i] + leaves[i+1]).encode()
+            ).hexdigest()
+            for i in range(0, len(leaves), 2)
+        ]
+    return leaves[0]
+\end{lstlisting}
+
+If any single transaction is changed, its leaf hash changes, propagating
+upward through the tree and changing the Merkle Root—making tampering
+detectable.
+
+\section{Hash Chain and Immutability}
+
+The \texttt{previous\_hash} field in each block stores the hash of the
+preceding block. This creates a cryptographic chain:
+
+\begin{center}
+\begin{tikzpicture}[
+    block/.style={draw, rounded corners, minimum width=3.5cm,
+                  minimum height=2.2cm, align=center, fill=blue!5},
+    arr/.style={-{Stealth[length=3mm]}, thick},
+]
+    \node[block] (b0) {Genesis Block\\index: 0\\prev: ``0''\\hash: $H(B_0)$};
+    \node[block, right=1.5cm of b0] (b1) {Block 1\\index: 1\\prev: $H(B_0)$\\hash: $H(B_1)$};
+    \node[block, right=1.5cm of b1] (b2) {Block 2\\index: 2\\prev: $H(B_1)$\\hash: $H(B_2)$};
+    \draw[arr] (b0) -- (b1);
+    \draw[arr] (b1) -- (b2);
+\end{tikzpicture}
+\end{center}
+
+If an attacker modifies a transaction in Block~1, its Merkle Root changes, which
+changes its hash. Block~2's \texttt{previous\_hash} no longer matches, making
+the chain invalid. The attacker would need to recompute every subsequent
+block—computationally infeasible and detectable via the \texttt{is\_valid()}
+integrity check.
+
+\section{Batch Sealing Strategy}
+
+Rather than creating one block per transaction, the system uses a
+\textbf{batch-seal} strategy:
+
+\begin{enumerate}
+    \item Incoming transactions are appended to a \texttt{\_pending} list.
+    \item A block is sealed when \textit{either}:
+    \begin{itemize}
+        \item The pending pool reaches \textbf{10 transactions}
+              (\texttt{BATCH\_SIZE = 10}), or
+        \item A \textbf{5-second background timer} fires
+              (\texttt{BATCH\_TIMEOUT = 5.0}).
+    \end{itemize}
+    \item Admins can also force-seal via \texttt{POST /api/chain/seal}.
+\end{enumerate}
+
+\begin{lstlisting}[language=Python, caption={Batch seal logic.}]
+BATCH_SIZE = 10
+BATCH_TIMEOUT = 5.0
+
+def add_transaction(self, ...):
+    with self._lock:
+        self._pending.append(tx)
+        if len(self._pending) >= self.BATCH_SIZE:
+            self._seal_block()    # Immediate seal
+
+def _auto_seal(self):
+    with self._lock:
+        if self._pending:
+            self._seal_block()    # Time-based seal
+    self._timer = threading.Timer(
+        self.BATCH_TIMEOUT, self._auto_seal
+    )
+    self._timer.daemon = True
+    self._timer.start()
+\end{lstlisting}
+
+This approach matches how production blockchains (Bitcoin, Ethereum) operate, where multiple transactions are grouped into each block to amortize overhead.
+
+\section{Thread Safety}
+
+A \texttt{threading.RLock} (reentrant lock) protects all mutations to
+\texttt{\_pending} and \texttt{self.chain}, preventing race conditions when
+multiple uploads happen simultaneously.
+
+\section{Redis Persistence}
+
+After every block is sealed, the entire chain is serialized to JSON and saved
+to Redis with key \texttt{blockchain:chain}. On startup, the node loads this
+key first—if it exists, the chain is restored. If not, a fresh genesis block is
+created. This ensures the blockchain survives container restarts.
+
+\section{Consensus Design}
+
+ChainVerify uses a \textbf{single-node, centralized blockchain}. No distributed
+consensus algorithm is applied because:
+
+\begin{itemize}
+    \item There is only one blockchain container—no competing versions of the chain.
+    \item Tamper detection is achieved through cryptographic chain validation
+          (\texttt{is\_valid()}), not distributed agreement.
+    \item This is a private enterprise system (similar to Hyperledger Fabric's model).
+    \item The \texttt{nonce} field exists as a placeholder for future upgrade to
+          Proof of Work if multi-node operation is needed.
+\end{itemize}
+
+
+% ============================================================================
+%                       CHAPTER 6: BACKEND SERVICE
+% ============================================================================
+\chapter{Backend Service}
+
+The backend is a FastAPI application running on port 8000. It serves as the
+intermediary between the frontend and the blockchain node.
+
+\section{Application Entry Point}
+
+File: \texttt{backend/main.py}
+
+\begin{itemize}
+    \item Creates the FastAPI app with title ``ChainVerify API v2.0''.
+    \item Configures CORS to allow requests only from the configured frontend origin.
+    \item Registers four route groups: \texttt{upload}, \texttt{verify},
+          \texttt{chain}, \texttt{analytics}, plus WebSocket (\texttt{ws}).
+    \item Exposes health check endpoints at \texttt{GET /} and
+          \texttt{GET /health}.
+\end{itemize}
+
+\section{Composite Hash Generation}
+
+File: \texttt{backend/utils.py}
+
+The system generates a \textbf{composite SHA-256 hash} by concatenating:
+\begin{enumerate}
+    \item The filename (encoded as UTF-8 bytes)
+    \item The raw file bytes
+    \item For PDFs only: the extracted text content (via PyPDF2)
+\end{enumerate}
+
+This makes the hash both byte-aware and content-aware. Two semantically
+different PDFs with identical binary content would still produce the same hash
+because the text content anchors the identity.
+
+\section{Upload Route}
+
+File: \texttt{backend/routes/upload.py} — \texttt{POST /api/upload}
+
+\begin{enumerate}
+    \item Validates file type (PDF, TXT, JPEG, PNG) and size ($<$10\,MB).
+    \item Reads file bytes and computes the composite SHA-256 hash.
+    \item Generates a unique \texttt{receipt\_id} using \texttt{uuid4()}.
+    \item POSTs the receipt metadata to the blockchain node at
+          \texttt{/chain/add}.
+    \item Publishes an upload event to Redis pub/sub channel
+          \texttt{"transactions"}.
+    \item Pushes the event to the Redis activity log (capped at 500 entries).
+    \item Returns the receipt metadata including \texttt{receipt\_id},
+          \texttt{file\_hash}, and blockchain response.
+\end{enumerate}
+
+\section{Verification Routes}
+
+File: \texttt{backend/routes/verify.py}
+
+\subsection{POST /api/verify}
+Re-computes the SHA-256 hash from the submitted file and searches the
+blockchain via \texttt{GET /chain/find?hash=\{hash\}}. Returns cryptographic
+proof (block index, block hash, Merkle root, original timestamp) if verified,
+or a tamper/not-found message if verification fails.
+
+\subsection{GET /api/verify/\{receipt\_id\}}
+Verifies by receipt UUID instead of file content. Useful for QR code
+verification.
+
+\subsection{GET /api/qr/\{receipt\_id\}}
+Generates a QR code PNG image encoding the verification URL. When scanned, it
+opens the verification page pre-filled with the receipt ID.
+
+\section{Chain Proxy Routes}
+
+File: \texttt{backend/routes/chain.py}
+
+These routes forward requests to the blockchain node, keeping port 8001 hidden
+from the frontend:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Endpoint} & \textbf{Proxies To} & \textbf{Purpose} \\
+\midrule
+\texttt{GET /api/chain/stats} & \texttt{/chain/stats} & Chain statistics \\
+\texttt{GET /api/chain} & \texttt{/chain} & Recent blocks \\
+\texttt{GET /api/chain/valid} & \texttt{/chain/valid} & Chain integrity check \\
+\texttt{POST /api/chain/seal} & \texttt{/chain/seal} & Force-seal pending TXs \\
+\bottomrule
+\end{tabularx}
+\caption{Chain proxy routes.}
+\end{table}
+
+\section{Analytics Routes}
+
+File: \texttt{backend/routes/analytics.py}
+
+\begin{itemize}
+    \item \texttt{GET /api/analytics/overview} — Combined blockchain stats and
+          Redis verification counters.
+    \item \texttt{GET /api/analytics/activity} — Recent upload/verify events
+          from the Redis activity log.
+    \item \texttt{GET /api/analytics/timeline} — 24-hour transaction volume
+          grouped into hourly buckets for charting.
+    \item \texttt{GET /api/health/services} — Pings blockchain and Redis;
+          returns health status with latency measurements.
+\end{itemize}
+
+\section{WebSocket — Real-Time Feed}
+
+File: \texttt{backend/routes/ws.py}
+
+The WebSocket endpoint at \texttt{/ws/transactions} bridges Redis pub/sub to
+the browser:
+
+\begin{enumerate}
+    \item Admin browser opens a WebSocket connection.
+    \item The server validates the session cookie and checks that
+          \texttt{user.role == "admin"}.
+    \item On success, subscribes to the Redis \texttt{"transactions"} channel.
+    \item Every published event is forwarded to all connected admin browsers.
+    \item The \texttt{ConnectionManager} class maintains a list of active
+          connections and handles cleanup of dead sockets.
+\end{enumerate}
+
+\section{Database Model}
+
+File: \texttt{backend/models.py}
+
+The \texttt{receipts} table in PostgreSQL stores:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\texttt{receipt\_id} & String (PK) & UUID primary key \\
+\texttt{file\_hash} & String (Unique) & SHA-256 hash; prevents duplicate registrations \\
+\texttt{uploader} & String & Name/identifier of the uploader \\
+\texttt{timestamp} & Float & Unix timestamp of upload \\
+\texttt{r2\_key} & String & Key in Cloudflare R2 for the actual file \\
+\bottomrule
+\end{tabularx}
+\caption{Receipts table schema.}
+\end{table}
+
+\section{Cloud Storage}
+
+File: \texttt{backend/storage.py}
+
+File storage uses Cloudflare R2 via the \texttt{boto3} SDK with a custom
+\texttt{endpoint\_url} pointing to Cloudflare's S3-compatible API. The same
+code would work with AWS S3 by changing only the endpoint URL.
+
+
+% ============================================================================
+%                       CHAPTER 7: FRONTEND
+% ============================================================================
+\chapter{Frontend}
+
+The frontend is a Next.js 14 application using TypeScript, Tailwind CSS, and
+Framer Motion for animations.
+
+\section{Upload Page (\texttt{/})}
+
+The main landing page provides:
+\begin{itemize}
+    \item Feature showcase: SHA-256 hashing, blockchain anchoring, instant
+          verification, tamper detection.
+    \item \textbf{Drag-and-drop upload zone} using \texttt{react-dropzone}
+          (accepts PDF, TXT, JPEG, PNG).
+    \item Animated pipeline progress: ``Reading File'' $\to$ ``Computing Hash''
+          $\to$ ``Anchoring'' $\to$ ``Confirming''.
+    \item On success: displays \texttt{receipt\_id}, file hash, block info, and
+          QR code download.
+    \item Copy-to-clipboard buttons for receipt ID and file hash.
+\end{itemize}
+
+\section{Verify Page (\texttt{/verify})}
+
+Two verification modes:
+\begin{enumerate}
+    \item \textbf{File mode:} Drag-and-drop a file; the system re-hashes and
+          checks the blockchain.
+    \item \textbf{ID mode:} Enter a receipt UUID for direct lookup.
+\end{enumerate}
+
+The page supports a URL parameter \texttt{?id=\{receipt\_id\}} which pre-fills
+the ID field—this is how QR codes deep-link into verification.
+
+\section{Admin Dashboard (\texttt{/dashboard})}
+
+Admin-only analytics page featuring:
+\begin{itemize}
+    \item Stats cards with animated counters (total blocks, transactions,
+          verifications).
+    \item Sparkline SVG charts for transaction volume trends.
+    \item Block explorer with expandable transaction details.
+    \item Real-time activity feed via WebSocket.
+    \item 24-hour timeline chart.
+    \item Chain search by hash or metadata.
+\end{itemize}
+
+\section{Admin Control Panel (\texttt{/admin})}
+
+System administration:
+\begin{itemize}
+    \item Service health panel (Blockchain Node, Redis, PostgreSQL with response times).
+    \item Force Seal button to immediately seal pending transactions.
+    \item Validate Chain button for full integrity verification.
+    \item Auto-refreshes every 10 seconds.
+\end{itemize}
+
+\section{Authentication (\texttt{/login})}
+
+Login page using Better Auth's client SDK. Supports:
+\begin{itemize}
+    \item Google OAuth
+    \item GitHub OAuth
+    \item Email/password authentication
+\end{itemize}
+
+\section{Edge Middleware}
+
+File: \texttt{frontend/src/middleware.ts}
+
+Next.js Edge Middleware runs on every request before the page is rendered:
+\begin{enumerate}
+    \item Checks if the path starts with \texttt{/dashboard} or \texttt{/admin}.
+    \item Reads the \texttt{better-auth.session\_token} cookie.
+    \item Validates the session and checks \texttt{user.role === "admin"}.
+    \item Non-admin users are redirected to \texttt{/login} before any HTML is served.
+\end{enumerate}
+
+\section{WebSocket Hook}
+
+File: \texttt{frontend/src/lib/useWebSocket.ts}
+
+Custom React hook with:
+\begin{itemize}
+    \item \textbf{Auto-reconnect} with exponential backoff and jitter.
+    \item Configurable max messages (default 50) and max reconnect delay (30s).
+    \item Handles unmount cleanup, JSON parsing, and connection state tracking.
+\end{itemize}
+
+
+% ============================================================================
+%                       CHAPTER 8: INFRASTRUCTURE
+% ============================================================================
+\chapter{Infrastructure}
+
+\section{Nginx Reverse Proxy}
+
+File: \texttt{nginx/nginx.conf}
+
+Nginx serves as the single entry point to the system:
+
+\subsection{Performance Configuration}
+\begin{itemize}
+    \item \texttt{worker\_processes auto} — Uses as many workers as CPU cores.
+    \item \texttt{worker\_connections 2048} — Each worker handles up to 2048
+          simultaneous connections.
+    \item \texttt{sendfile on}, \texttt{tcp\_nopush on}, \texttt{tcp\_nodelay on}
+          — OS-level I/O optimizations.
+    \item \texttt{client\_max\_body\_size 12m} — Allows uploads up to 12\,MB
+          (accommodates multipart overhead above the 10\,MB backend limit).
+\end{itemize}
+
+\subsection{Rate Limiting}
+
+Two separate rate-limit zones:
+\begin{lstlisting}[language=bash, caption={Nginx rate limiting configuration.}]
+limit_req_zone $binary_remote_addr zone=api:10m    rate=30r/s;
+limit_req_zone $binary_remote_addr zone=upload:10m rate=5r/s;
+\end{lstlisting}
+
+\begin{itemize}
+    \item Upload routes: 5 requests/second per IP (burst of 3).
+    \item API routes: 30 requests/second per IP (burst of 20).
+\end{itemize}
+
+\subsection{Security Headers}
+
+Every response includes:
+\begin{itemize}
+    \item \texttt{X-Frame-Options: SAMEORIGIN} — Prevents clickjacking.
+    \item \texttt{X-Content-Type-Options: nosniff} — Prevents MIME type sniffing.
+    \item \texttt{X-XSS-Protection: 1; mode=block} — Enables browser XSS filter.
+    \item \texttt{Referrer-Policy: strict-origin-when-cross-origin} — Controls
+          referrer information.
+\end{itemize}
+
+\subsection{Gzip Compression}
+
+Responses are compressed for CSS, JSON, JavaScript, XML, and SVG, reducing
+bandwidth consumption significantly.
+
+\subsection{WebSocket Proxying}
+
+WebSocket connections for \texttt{/ws/} include HTTP upgrade headers
+(\texttt{Upgrade}, \texttt{Connection}) required for the protocol switch
+from HTTP to WebSocket.
+
+\section{Redis Architecture}
+
+Redis serves three distinct roles:
+
+\begin{enumerate}
+    \item \textbf{Blockchain State Persistence:}
+    Key \texttt{blockchain:chain} stores the JSON-serialized chain.
+    Written after every block seal; read on node startup.
+
+    \item \textbf{Pub/Sub Event Bus:}
+    Channel \texttt{"transactions"}. Publishers: upload and verify routes,
+    blockchain node. Subscriber: WebSocket handler.
+
+    \item \textbf{Activity Log \& Stats:}
+    \texttt{activity\_log} — Redis List (capped at 500 entries).
+    \texttt{stats:valid\_verifications} and
+    \texttt{stats:invalid\_verifications} — Integer counters.
+\end{enumerate}
+
+With \texttt{maxmemory-policy allkeys-lru}, Redis evicts least recently used
+keys when approaching the 256\,MB memory limit. The blockchain state key is
+accessed frequently and unlikely to be evicted.
+
+\section{PostgreSQL}
+
+PostgreSQL stores \textbf{only authentication data}—not receipt hashes or
+blockchain data. The schema (created by \texttt{01-better-auth.sql}) includes:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Table} & \textbf{Purpose} \\
+\midrule
+\texttt{user} & User profiles: id, email, name, role (admin/user), ban status \\
+\texttt{session} & Active sessions with expiry, IP address, user agent \\
+\texttt{account} & OAuth provider links (Google, GitHub) or password credentials \\
+\texttt{verification} & Email verification and OTP tokens \\
+\bottomrule
+\end{tabularx}
+\caption{PostgreSQL authentication schema.}
+\end{table}
+
+\section{Cloudflare R2}
+
+Cloudflare R2 is an S3-compatible object storage service used to store the
+actual uploaded files. Benefits:
+\begin{itemize}
+    \item No egress fees (unlike AWS S3).
+    \item Global CDN distribution.
+    \item S3-compatible API—zero code change if migrated to AWS S3.
+    \item Scales infinitely; no disk capacity concerns.
+\end{itemize}
+
+
+% ============================================================================
+%                   CHAPTER 9: AUTHENTICATION SYSTEM
+% ============================================================================
+\chapter{Authentication System}
+
+\section{Better Auth Framework}
+
+Better Auth is a full-stack authentication library providing:
+\begin{itemize}
+    \item Google and GitHub OAuth social login.
+    \item Email/password authentication.
+    \item Session management with configurable expiry (7 days) and cookie cache
+          (5 minutes).
+    \item Admin plugin adding a \texttt{role} field to user profiles.
+\end{itemize}
+
+\section{Session Cookie Flow}
+
+\begin{enumerate}
+    \item User signs in via Google/GitHub OAuth or email/password.
+    \item Better Auth creates a session record in PostgreSQL and sets a secure
+          cookie \texttt{better-auth.session\_token}.
+    \item The cookie is sent with every browser request (including WebSocket
+          handshake).
+    \item Edge Middleware and WebSocket auth both validate this cookie against
+          PostgreSQL.
+\end{enumerate}
+
+\section{Admin Role System}
+
+Only users with \texttt{role = "admin"} can access \texttt{/dashboard} and
+\texttt{/admin}. The \texttt{make-admin.ts} script in
+\texttt{frontend/scripts/} promotes a user by email:
+
+\begin{verbatim}
+npx ts-node scripts/make-admin.ts user@example.com
+\end{verbatim}
+
+
+% ============================================================================
+%                      CHAPTER 10: DATA FLOW
+% ============================================================================
+\chapter{End-to-End Data Flow}
+
+\section{Upload Flow}
+
+\begin{enumerate}
+    \item \textbf{Browser} sends \texttt{POST /api/upload} (multipart form:
+          file + uploader name).
+    \item \textbf{Nginx} applies rate limiting (5/s) and size check (12\,MB).
+    \item \textbf{Backend} validates file type and size, reads bytes, computes
+          composite SHA-256 hash, generates UUID.
+    \item \textbf{Backend} POSTs to \texttt{http://blockchain:8001/chain/add}.
+    \item \textbf{Blockchain Node} appends to pending pool, publishes to Redis.
+    \item \textbf{Backend} publishes upload event to Redis and pushes to
+          activity log.
+    \item \textbf{Browser} receives \texttt{receipt\_id}, \texttt{file\_hash},
+          block info; renders QR code.
+\end{enumerate}
+
+\section{Verify Flow}
+
+\begin{enumerate}
+    \item \textbf{Browser} sends \texttt{POST /api/verify} with the file.
+    \item \textbf{Backend} recomputes the SHA-256 hash.
+    \item \textbf{Backend} queries
+          \texttt{GET http://blockchain:8001/chain/find?hash=\{hash\}}.
+    \item \textbf{Blockchain Node} searches sealed blocks (reversed for recency)
+          and pending pool.
+    \item If found: returns block index, Merkle root, timestamp
+          (\texttt{valid = true}).
+    \item If not found: document is either unregistered or tampered
+          (\texttt{valid = false}).
+    \item Redis verification counters are incremented.
+\end{enumerate}
+
+\section{Real-Time WebSocket Flow}
+
+\begin{enumerate}
+    \item Admin browser opens WebSocket connection to \texttt{/ws/transactions}.
+    \item Backend validates admin session cookie.
+    \item Backend subscribes to Redis \texttt{"transactions"} channel.
+    \item Any upload or verify event anywhere in the system is published to
+          Redis, received by the WebSocket handler, and forwarded to all
+          connected admin browsers in real time.
+\end{enumerate}
+
+
+% ============================================================================
+%                       CHAPTER 11: SECURITY
+% ============================================================================
+\chapter{Security Architecture}
+
+\begin{longtable}{p{4cm} p{10cm}}
+\toprule
+\textbf{Threat} & \textbf{Mitigation} \\
+\midrule
+\endhead
+Document tampering & SHA-256 hash + Merkle root makes any modification
+    detectable. \\
+\midrule
+Unauthorized API access & CORS restricts cross-origin requests; admin routes
+    check JWT session. \\
+\midrule
+SQL injection & SQLAlchemy ORM parameterizes all queries; no raw SQL with user
+    input. \\
+\midrule
+Brute force / DDoS & Nginx rate limiting: 5 req/s (upload), 30 req/s (API)
+    per IP. \\
+\midrule
+Clickjacking & \texttt{X-Frame-Options: SAMEORIGIN} on all responses. \\
+\midrule
+MIME sniffing attacks & \texttt{X-Content-Type-Options: nosniff} header. \\
+\midrule
+XSS & \texttt{X-XSS-Protection: 1; mode=block}; React auto-escapes output. \\
+\midrule
+Unauthorized dashboard & Edge Middleware checks admin role before rendering any page. \\
+\midrule
+Unauthorized WebSocket & Session cookie validated + role check before accepting
+    connection.  \\
+\midrule
+Credential exposure & All secrets stored in environment variables, never
+    hardcoded. \\
+\midrule
+Large file attacks & 10\,MB backend limit + 12\,MB Nginx limit. \\
+\midrule
+Duplicate uploads & \texttt{file\_hash} column has \texttt{UNIQUE}
+    constraint—duplicates rejected at DB level. \\
+\midrule
+Account abuse & Better Auth admin plugin supports banning with reason and expiry. \\
+\bottomrule
+\caption{Threat model and mitigations.}
+\end{longtable}
+
+
+% ============================================================================
+%                       CHAPTER 12: SCALABILITY
+% ============================================================================
+\chapter{Scalability Design}
+
+\begin{longtable}{p{5cm} p{9cm}}
+\toprule
+\textbf{Design Decision} & \textbf{Scalability Benefit} \\
+\midrule
+\endhead
+Blockchain as separate microservice & Backend replicas scale independently of
+    the blockchain node. \\
+\midrule
+Redis as shared state & Multiple stateless backend replicas share the same
+    Redis instance. \\
+\midrule
+Batch block sealing & Reduces blockchain I/O from $O(n)$ per-transaction to
+    $O(1)$ per batch. \\
+\midrule
+Async Python (FastAPI) & Single-threaded backend handles thousands of
+    concurrent requests via async I/O. \\
+\midrule
+Connection pooling & SQLAlchemy pool prevents database connection exhaustion. \\
+\midrule
+Nginx rate limiting & Protects backend from abusive clients. \\
+\midrule
+Redis LRU eviction & Predictable memory usage as activity log grows. \\
+\midrule
+Docker Compose scaling & \texttt{docker compose up --scale backend=3}
+    for instant horizontal scale. \\
+\midrule
+Cloudflare R2 & Object storage scales infinitely with no disk capacity
+    concerns. \\
+\midrule
+Activity log trim & Redis list capped at 500 entries via \texttt{LTRIM}. \\
+\midrule
+Reversed block search & \texttt{reversed(self.chain)} finds recent
+    transactions faster, reducing average search time. \\
+\bottomrule
+\caption{Scalability design decisions.}
+\end{longtable}
+
+
+% ============================================================================
+%                     CHAPTER 13: FILE REFERENCE
+% ============================================================================
+\chapter{Project Structure and File Reference}
+
+\section{Project Directory Layout}
+
+\begin{verbatim}
+origyn/
+├── blockchain/               # Custom blockchain microservice
+│   ├── block.py              # MerkleTree + Block data structures
+│   ├── blockchain.py         # Chain management, batch sealing, Redis
+│   ├── node.py               # FastAPI REST API for blockchain
+│   └── requirements.txt
+│
+├── backend/                  # FastAPI backend service
+│   ├── main.py               # Entry point, CORS, router registration
+│   ├── utils.py              # SHA-256 hashing, PDF text extraction
+│   ├── models.py             # SQLAlchemy ORM models
+│   ├── storage.py            # Cloudflare R2 file operations
+│   └── routes/
+│       ├── upload.py         # POST /api/upload
+│       ├── verify.py         # POST /api/verify, GET /api/qr/{id}
+│       ├── chain.py          # Proxy routes to blockchain node
+│       ├── analytics.py      # Dashboard data endpoints
+│       └── ws.py             # WebSocket real-time feed
+│
+├── frontend/                 # Next.js 14 frontend
+│   └── src/
+│       ├── app/
+│       │   ├── page.tsx      # Upload page
+│       │   ├── verify/       # Verification page
+│       │   ├── dashboard/    # Admin analytics dashboard
+│       │   ├── admin/        # Admin control panel
+│       │   └── login/        # Login page
+│       ├── lib/
+│       │   ├── api.ts        # Axios instance + TypeScript types
+│       │   ├── auth.ts       # Better Auth server config
+│       │   ├── auth-client.ts
+│       │   └── useWebSocket.ts
+│       └── middleware.ts     # Edge middleware
+│
+├── nginx/nginx.conf          # Reverse proxy configuration
+├── postgres/01-better-auth.sql
+├── docker-compose.yml
+├── Dockerfile.backend
+└── Dockerfile.blockchain
+\end{verbatim}
+
+\section{Blockchain Node API}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Method} & \textbf{Endpoint} & \textbf{Purpose} \\
+\midrule
+POST & \texttt{/chain/add} & Add a new transaction to the pending pool \\
+GET & \texttt{/chain/find?hash=\{h\}} & Search for a file hash on the chain \\
+GET & \texttt{/chain/find\_receipt?id=\{id\}} & Search by receipt UUID \\
+GET & \texttt{/chain} & Recent blocks + chain statistics \\
+GET & \texttt{/chain/stats} & Uptime, block count, TX count, validity \\
+GET & \texttt{/chain/valid} & Full chain integrity check \\
+GET & \texttt{/chain/transactions} & Recent transactions from sealed blocks \\
+POST & \texttt{/chain/seal} & Force-seal pending transactions \\
+GET & \texttt{/health} & Health check \\
+\bottomrule
+\end{tabularx}
+\caption{Blockchain node REST API endpoints.}
+\end{table}
+
+
+% ============================================================================
+%                       CHAPTER 14: TESTING
+% ============================================================================
+\chapter{Testing}
+
+The project includes several test scripts to validate core functionality:
+
+\section{Hash Verification}
+
+\texttt{check\_hashes.py} — Verifies that a computed file hash matches the
+blockchain record, ensuring the hashing pipeline is consistent across upload
+and verify paths.
+
+\section{PDF Processing Test}
+
+\texttt{test\_pdf.py} — Tests the PDF text extraction and SHA-256 hashing
+pipeline, verifying that the composite hash correctly incorporates filename,
+file bytes, and extracted text content.
+
+\section{Tamper Detection Test}
+
+\texttt{test\_fake\_bill.py} — Submits a modified document to the verification
+endpoint and confirms that the system correctly detects the tampering (returns
+\texttt{valid = false}).
+
+\section{Chain Integrity Validation}
+
+The \texttt{GET /chain/valid} endpoint iterates over every block in the chain
+and verifies:
+\begin{enumerate}
+    \item Each block's stored hash matches its recomputed hash.
+    \item Each block's \texttt{previous\_hash} matches the hash of the
+          preceding block.
+    \item The Merkle root of each block is correct given its transactions.
+\end{enumerate}
+
+If any check fails, the chain is reported as invalid with details about the
+corrupted block.
+
+
+% ============================================================================
+%                    CHAPTER 15: DEPLOYMENT
+% ============================================================================
+\chapter{Deployment}
+
+\section{Prerequisites}
+
+\begin{itemize}
+    \item Docker and Docker Compose (v2+)
+    \item Cloudflare R2 bucket (for file storage)
+    \item Google and/or GitHub OAuth credentials
+\end{itemize}
+
+\section{Environment Configuration}
+
+\subsection{Backend (\texttt{backend/.env})}
+\begin{verbatim}
+R2_ACCOUNT_ID=your_cloudflare_account_id
+R2_ACCESS_KEY=your_r2_access_key
+R2_SECRET_KEY=your_r2_secret_key
+R2_BUCKET=your_bucket_name
+\end{verbatim}
+
+\subsection{Frontend (\texttt{frontend/.env.local})}
+\begin{verbatim}
+NEXT_PUBLIC_API_URL=http://localhost/api
+BETTER_AUTH_SECRET=your_auth_secret_min_32_chars
+BETTER_AUTH_URL=http://localhost
+DATABASE_URL=postgresql://receipts:receipts_secret@localhost:5432/receipts
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+\end{verbatim}
+
+\section{Launching the System}
+
+\begin{verbatim}
+docker compose up --build
+\end{verbatim}
+
+This starts all six containers in dependency order. The application is
+accessible at \texttt{http://localhost}.
+
+\section{Creating an Admin User}
+
+\begin{verbatim}
+cd frontend
+npx ts-node scripts/make-admin.ts your@email.com
+\end{verbatim}
+
+
+% ============================================================================
+%                    CHAPTER 16: FUTURE WORK
+% ============================================================================
+\chapter{Future Work}
+
+\begin{enumerate}
+    \item \textbf{Multi-node blockchain:} Extend to multiple blockchain nodes
+          with gossip protocol and Nakamoto consensus (longest valid chain rule)
+          or PBFT voting for true decentralization.
+    \item \textbf{Proof of Work:} Activate the \texttt{nonce} field with
+          configurable difficulty targets for mining-based consensus.
+    \item \textbf{IPFS integration:} Store documents on IPFS for
+          content-addressable, decentralized file storage alongside Cloudflare R2.
+    \item \textbf{Smart contract support:} Add programmable verification rules
+          (e.g., auto-expiring documents, multi-party signing).
+    \item \textbf{Mobile application:} Native iOS/Android app with camera-based
+          document scanning and QR verification.
+    \item \textbf{Audit logging:} Comprehensive, tamper-proof audit trails for
+          all system operations.
+    \item \textbf{TLS/HTTPS:} Add Let's Encrypt certificate management to
+          Nginx for production HTTPS.
+\end{enumerate}
+
+
+% ============================================================================
+%                       CHAPTER 17: CONCLUSION
+% ============================================================================
+\chapter{Conclusion}
+
+This report presented ChainVerify (Origyn), a full-stack enterprise system for
+blockchain-based document verification. The key contributions are:
+
+\begin{enumerate}
+    \item A \textbf{custom blockchain implementation} with SHA-256 hashing,
+          Merkle Trees, batch-sealed blocks, and Redis-persisted state.
+    \item A \textbf{microservices architecture} with six Docker containers
+          communicating over an internal bridge network, deployable with a single
+          command.
+    \item A \textbf{complete web application} with Next.js frontend, FastAPI
+          backend, real-time WebSocket feeds, QR code verification, and
+          role-based admin dashboards.
+    \item A \textbf{robust security model} incorporating CORS, rate limiting,
+          session-based authentication, Edge Middleware, and cryptographic tamper
+          detection.
+    \item A \textbf{scalable design} with stateless backends, shared Redis
+          state, batch sealing, async I/O, and infinitely scalable object
+          storage.
+\end{enumerate}
+
+The system demonstrates that blockchain technology can be practically applied
+to solve real-world document fraud problems without the overhead of public
+cryptocurrency networks. The private, containerized approach makes it suitable
+for enterprise deployment while maintaining all the tamper-detection benefits
+of cryptographic chain linking and Merkle Tree verification.
+
+
+% ========================== BIBLIOGRAPHY ====================================
+\begin{thebibliography}{99}
+
+\bibitem{nakamoto}
+S.~Nakamoto, ``Bitcoin: A Peer-to-Peer Electronic Cash System,'' 2008.
+\url{https://bitcoin.org/bitcoin.pdf}
+
+\bibitem{ethereum}
+V.~Buterin, ``Ethereum: A Next-Generation Smart Contract and Decentralized
+Application Platform,'' 2014.
+\url{https://ethereum.org/en/whitepaper/}
+
+\bibitem{merkle}
+R.~C.~Merkle, ``A Digital Signature Based on a Conventional Encryption
+Function,'' in \textit{Advances in Cryptology — CRYPTO '87}, Springer, 1988.
+
+\bibitem{sha256}
+NIST, ``Secure Hash Standard (SHS),'' FIPS PUB 180-4, 2015.
+\url{https://csrc.nist.gov/publications/detail/fips/180/4/final}
+
+\bibitem{fastapi}
+S.~Ramírez, ``FastAPI — Modern, fast, web framework for building APIs with
+Python 3.7+,'' 2019. \url{https://fastapi.tiangolo.com}
+
+\bibitem{nextjs}
+Vercel, ``Next.js — The React Framework for Production,'' 2024.
+\url{https://nextjs.org}
+
+\bibitem{docker}
+Docker Inc., ``Docker: Accelerated Container Application Development,'' 2024.
+\url{https://www.docker.com}
+
+\bibitem{redis}
+Redis Ltd., ``Redis — The Real-time Data Platform,'' 2024.
+\url{https://redis.io}
+
+\bibitem{hyperledger}
+The Linux Foundation, ``Hyperledger Fabric Documentation,'' 2024.
+\url{https://hyperledger-fabric.readthedocs.io}
+
+\bibitem{betterauth}
+Better Auth, ``Better Auth — Authentication for the Web,'' 2024.
+\url{https://www.better-auth.com}
+
+\end{thebibliography}
+
+\end{document}
