@@ -1,4 +1,4 @@
-# ChainVerify — Complete Project Documentation
+# Origyn — Complete Project Documentation
 
 > **Enterprise Digital Bill & Receipt Verification System using Blockchain**
 
